@@ -61,12 +61,13 @@ namespace Orleans.CodeGenerator
             var attributes = SF.AttributeList()
                 .AddAttributes(
                     CodeGeneratorCommon.GetGeneratedCodeAttributeSyntax(),
-#if !NETSTANDARD
-                    // we could add Serializable attribute if we want, but that would require that the target
-                    // project depends on System.Runtime.Serialization.Formatters, which is currently in preview
+
                     SF.Attribute(typeof(SerializableAttribute).GetNameSyntax()),
+#if !NETSTANDARD_TODO
+                    //ExcludeFromCodeCoverageAttribute became an internal class in netstandard
                     SF.Attribute(typeof(ExcludeFromCodeCoverageAttribute).GetNameSyntax()),
 #endif
+
                     markerAttribute);
 
             var className = CodeGeneratorCommon.ClassPrefix + TypeUtils.GetSuitableClassName(grainType) + ClassSuffix;
@@ -101,7 +102,7 @@ namespace Orleans.CodeGenerator
         private static MemberDeclarationSyntax[] GenerateConstructors(string className)
         {
             var baseConstructors =
-                typeof(GrainReference).GetConstructors(
+                typeof(GrainReference).GetTypeInfo().GetConstructors(
                     BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance).Where(_ => !_.IsPrivate);
             var constructors = new List<MemberDeclarationSyntax>();
             foreach (var baseConstructor in baseConstructors)
@@ -147,7 +148,7 @@ namespace Orleans.CodeGenerator
                 foreach (var parameter in parameters)
                 {
                     onEncounteredType(parameter.ParameterType);
-                    if (typeof(IGrainObserver).IsAssignableFrom(parameter.ParameterType))
+                    if (typeof(IGrainObserver).GetTypeInfo().IsAssignableFrom(parameter.ParameterType))
                     {
                         body.Add(
                             SF.ExpressionStatement(
@@ -261,7 +262,7 @@ namespace Orleans.CodeGenerator
             var argIdentifier = arg.GetOrCreateName(argIndex).ToIdentifierName();
 
             // Addressable arguments must be converted to references before passing.
-            if (typeof(IAddressable).IsAssignableFrom(arg.ParameterType)
+            if (typeof(IAddressable).GetTypeInfo().IsAssignableFrom(arg.ParameterType)
                 && arg.ParameterType.GetTypeInfo().IsInterface)
             {
                 return
@@ -334,7 +335,7 @@ namespace Orleans.CodeGenerator
         {
             // Get the method with the correct type.
             var method =
-                typeof(GrainReference)
+                typeof(GrainReference).GetTypeInfo()
                     .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
                     .FirstOrDefault(m => m.Name == "GetMethodName");
 

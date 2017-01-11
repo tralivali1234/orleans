@@ -19,4 +19,7 @@ using Orleans.CodeGeneration;
 [assembly: Guid("6fac9056-5fb2-44ef-a3ba-63aa58f09428")]
 [assembly: SkipCodeGeneration]
 [assembly: InternalsVisibleTo("UnitTests")]
+[assembly: InternalsVisibleTo("Tester.AzureUtils")]
+[assembly: InternalsVisibleTo("Tester.SQLUtils")]
+[assembly: InternalsVisibleTo("AWSUtils.Tests")]
 [assembly: InternalsVisibleTo("UnitTestGrains")]
