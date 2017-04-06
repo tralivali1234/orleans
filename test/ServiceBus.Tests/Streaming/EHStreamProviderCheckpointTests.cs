@@ -23,6 +23,7 @@ using Xunit;
 namespace ServiceBus.Tests.StreamingTests
 {
     [TestCategory("EventHub"), TestCategory("Streaming")]
+    [Collection(TestEnvironmentFixture.DefaultCollection)]
     public class EHStreamProviderCheckpointTests : TestClusterPerTest
     {
         private static readonly string StreamProviderTypeName = typeof(EventHubStreamProvider).FullName;
@@ -38,7 +39,7 @@ namespace ServiceBus.Tests.StreamingTests
                 EHConsumerGroup, EHPath));
 
         private static readonly EventHubCheckpointerSettings CheckpointerSettings =
-            new EventHubCheckpointerSettings(TestDefaultConfiguration.EventHubConnectionString,
+            new EventHubCheckpointerSettings(TestDefaultConfiguration.DataConnectionString,
                 EHCheckpointTable, CheckpointNamespace, TimeSpan.FromSeconds(1));
 
         private static readonly EventHubStreamProviderSettings ProviderSettings =
@@ -89,7 +90,7 @@ namespace ServiceBus.Tests.StreamingTests
             }
             finally
             {
-                var reporter = GrainClient.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
+                var reporter = this.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
                 reporter.Reset().Ignore();
             }
         }
@@ -110,14 +111,14 @@ namespace ServiceBus.Tests.StreamingTests
             }
             finally
             {
-                var reporter = GrainClient.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
+                var reporter = this.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
                 reporter.Reset().Ignore();
             }
         }
 
         private async Task<bool> CheckCounters(string streamNamespace, int streamCount, int eventsInStream, bool assertIsTrue)
         {
-            var reporter = GrainClient.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
+            var reporter = this.GrainFactory.GetGrain<IGeneratedEventReporterGrain>(GeneratedStreamTestConstants.ReporterId);
 
             var report = await reporter.GetReport(StreamProviderName, streamNamespace);
             if (assertIsTrue)
@@ -139,7 +140,7 @@ namespace ServiceBus.Tests.StreamingTests
 
         private async Task RestartAgents()
         {
-            var mgmt = GrainClient.GrainFactory.GetGrain<IManagementGrain>(0);
+            var mgmt = this.GrainFactory.GetGrain<IManagementGrain>(0);
 
             await mgmt.SendControlCommandToProvider(StreamProviderTypeName, StreamProviderName, (int)PersistentStreamProviderCommand.StopAgents);
             await mgmt.SendControlCommandToProvider(StreamProviderTypeName, StreamProviderName, (int)PersistentStreamProviderCommand.StartAgents);
@@ -147,7 +148,7 @@ namespace ServiceBus.Tests.StreamingTests
 
         private async Task GenerateEvents(string streamNamespace, List<Guid> streamGuids, int eventsInStream, int payloadSize)
         {
-            IStreamProvider streamProvider = GrainClient.GetStreamProvider(StreamProviderName);
+            IStreamProvider streamProvider = this.Client.GetStreamProvider(StreamProviderName);
             IAsyncStream<GeneratedEvent>[] producers = streamGuids
                     .Select(streamGuid => streamProvider.GetStream<GeneratedEvent>(streamGuid, streamNamespace))
                     .ToArray();

@@ -5,6 +5,17 @@ using Orleans;
 
 namespace UnitTests.GrainInterfaces
 {
+    public interface IGenericGrainWithGenericState<TFirstTypeParam, TStateType, TLastTypeParam> : IGrainWithGuidKey
+    {
+        Task<Type> GetStateType();
+    }
+
+    public class GenericGrainWithGenericState<TFirstTypeParam, TStateType, TLastTypeParam> : Grain<TStateType>,
+        IGenericGrainWithGenericState<TFirstTypeParam, TStateType, TLastTypeParam> where TStateType : new()
+    {
+        public Task<Type> GetStateType() => Task.FromResult(this.State.GetType());
+    }
+
     public interface IGenericGrain<T, U> : IGrainWithIntegerKey
     {
         Task SetT(T a);
@@ -24,7 +35,7 @@ namespace UnitTests.GrainInterfaces
     /// Long named grain type, which can cause issues in AzureTableStorage
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public interface ISimpleGenericGrainUsingAzureTableStorage<T> : IGrainWithGuidKey
+    public interface ISimpleGenericGrainUsingAzureStorageAndLongGrainName<T> : IGrainWithGuidKey
     {
         Task<T> EchoAsync(T entity);
 

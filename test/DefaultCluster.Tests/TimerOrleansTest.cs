@@ -1,12 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
-using System.Threading;
 using System.Threading.Tasks;
-using Orleans;
 using Orleans.Runtime;
-using Tester;
 using TestExtensions;
 using UnitTests.GrainInterfaces;
 using Xunit;
@@ -24,7 +20,7 @@ namespace DefaultCluster.Tests.TimerTests
             this.output = output;
         }
 
-        [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("Timers")]
+        [Fact, TestCategory("SlowBVT"), TestCategory("Functional"), TestCategory("Timers")]
         public async Task TimerOrleansTest_Basic()
         {
             for (int i = 0; i < 10; i++)
@@ -92,7 +88,6 @@ namespace DefaultCluster.Tests.TimerTests
             }
         }
 
-
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("Timers")]
         public async Task TimerOrleansTest_Migration()
         {
@@ -111,15 +106,15 @@ namespace DefaultCluster.Tests.TimerTests
 
             last = await grain.GetCounter();
             output.WriteLine("value = " + last);
-            Assert.True(last >= 10 && last <= 12, $"last >= 10 && last <= 12. Actual: last = {last}");
 
             // Restart the grain.
             await grain.Deactivate();
             stopwatch.Restart();
+            last = await grain.GetCounter();
+            Assert.True(last == 0, "Restarted grains should have zero ticks. Actual: " + last);
             period = await grain.GetTimerPeriod();
 
             // Poke the grain and ensure it still works as it should.
-            last = await grain.GetCounter();
             while (stopwatch.Elapsed < timeout && last < 10)
             {
                 await Task.Delay(period.Divide(2));
@@ -127,18 +122,19 @@ namespace DefaultCluster.Tests.TimerTests
             }
 
             last = await grain.GetCounter();
-            Assert.True(last >= 10 && last <= 12, $"last >= 10 && last <= 12. Actual: last = {last}");
+            stopwatch.Stop();
+
             double maximalNumTicks = stopwatch.Elapsed.Divide(period);
             Assert.True(
                 last <= maximalNumTicks,
                 $"Assert: last <= maximalNumTicks. Actual: last = {last}, maximalNumTicks = {maximalNumTicks}");
 
             output.WriteLine(
-                "Total Elaped time = " + (stopwatch.Elapsed.TotalSeconds) + " sec. Expected Ticks = " + maximalNumTicks +
+                "Total Elapsed time = " + (stopwatch.Elapsed.TotalSeconds) + " sec. Expected Ticks = " + maximalNumTicks +
                 ". Actual ticks = " + last);
         }
 
-        [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("Timers")]
+        [Fact, TestCategory("SlowBVT"), TestCategory("Functional"), TestCategory("Timers")]
         public async Task AsyncTimerTest_GrainCall()
         {
             const string testName = "AsyncTimerTest_GrainCall";

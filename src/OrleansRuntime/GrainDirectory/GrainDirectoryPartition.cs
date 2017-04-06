@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Orleans.GrainDirectory;
-
+using Orleans.Runtime.Configuration;
 
 namespace Orleans.Runtime.GrainDirectory
 {
@@ -29,7 +29,7 @@ namespace Orleans.Runtime.GrainDirectory
         }
 
 
-        public bool OkToRemove(UnregistrationCause cause)
+        public bool OkToRemove(UnregistrationCause cause, GlobalConfiguration config)
         {
             switch (cause)
             {
@@ -44,7 +44,7 @@ namespace Orleans.Runtime.GrainDirectory
                         if (RegistrationStatus == GrainDirectoryEntryStatus.Cached)
                             return true; // cache entries are always removed
 
-                        var delayparameter = Silo.CurrentSilo.OrleansConfig.Globals.DirectoryLazyDeregistrationDelay;
+                        var delayparameter = config.DirectoryLazyDeregistrationDelay;
                         if (delayparameter <= TimeSpan.Zero)
                             return false; // no lazy deregistration
                         else
@@ -121,11 +121,11 @@ namespace Orleans.Runtime.GrainDirectory
             }
         }
 
-        public bool RemoveActivation(ActivationId act, UnregistrationCause cause, out IActivationInfo info, out bool wasRemoved)
+        public bool RemoveActivation(ActivationId act, UnregistrationCause cause, GlobalConfiguration config, out IActivationInfo info, out bool wasRemoved)
         {
             info = null;
             wasRemoved = false;
-            if (Instances.TryGetValue(act, out info) && info.OkToRemove(cause))
+            if (Instances.TryGetValue(act, out info) && info.OkToRemove(cause, config))
             {
                 Instances.Remove(act);
                 wasRemoved = true;
@@ -134,7 +134,7 @@ namespace Orleans.Runtime.GrainDirectory
             return Instances.Count == 0;
         }
 
-        public bool Merge(GrainId grain, IGrainInfo other)
+        public Dictionary<SiloAddress, List<ActivationAddress>> Merge(GrainId grain, IGrainInfo other)
         {
             bool modified = false;
             foreach (var pair in other.Instances)
@@ -159,18 +159,24 @@ namespace Orleans.Runtime.GrainDirectory
                 var activationsToDrop = orderedActivations.Skip(1);
                 Instances.Clear();
                 Instances.Add(activationToKeep.Key, activationToKeep.Value);
-                var list = new List<ActivationAddress>(1);
-                foreach (var activation in activationsToDrop.Select(keyValuePair => ActivationAddress.GetAddress(keyValuePair.Value.SiloAddress, grain, keyValuePair.Key)))
+                var mapping = new Dictionary<SiloAddress, List<ActivationAddress>>();
+                foreach (var activationPair in activationsToDrop)
                 {
-                    list.Add(activation);
-                    InsideRuntimeClient.Current.InternalGrainFactory.GetSystemTarget<ICatalog>(Constants.CatalogId, activation.Silo).
-                        DeleteActivations(list).Ignore();
+                    var activation = ActivationAddress.GetAddress(activationPair.Value.SiloAddress, grain, activationPair.Key);
 
-                    list.Clear();
+                    List<ActivationAddress> activationsToRemoveOnSilo;
+                    if (!mapping.TryGetValue(activation.Silo, out activationsToRemoveOnSilo))
+                    {
+                        activationsToRemoveOnSilo = mapping[activation.Silo] = new List<ActivationAddress>(1);
+                    }
+
+                    activationsToRemoveOnSilo.Add(activation);
                 }
-                return true;
+
+                return mapping;
             }
-            return false;
+
+            return null;
         }
 
         public void CacheOrUpdateRemoteClusterRegistration(GrainId grain, ActivationId oldActivation, ActivationId activation, SiloAddress silo)
@@ -207,7 +213,9 @@ namespace Orleans.Runtime.GrainDirectory
         private Dictionary<GrainId, IGrainInfo> partitionData;
         private readonly object lockable;
         private readonly Logger log;
-        private ISiloStatusOracle siloStatusOracle;
+        private readonly ISiloStatusOracle siloStatusOracle;
+        private readonly GlobalConfiguration globalConfig;
+        private readonly IInternalGrainFactory grainFactory;
 
         [ThreadStatic]
         private static ActivationId[] activationIdsHolder;
@@ -217,12 +225,14 @@ namespace Orleans.Runtime.GrainDirectory
 
         internal int Count { get { return partitionData.Count; } }
 
-        public GrainDirectoryPartition(ISiloStatusOracle siloStatusOracle)
+        public GrainDirectoryPartition(ISiloStatusOracle siloStatusOracle, GlobalConfiguration globalConfig, IInternalGrainFactory grainFactory)
         {
             partitionData = new Dictionary<GrainId, IGrainInfo>();
             lockable = new object();
             log = LogManager.GetLogger("DirectoryPartition");
             this.siloStatusOracle = siloStatusOracle;
+            this.globalConfig = globalConfig;
+            this.grainFactory = grainFactory;
         }
 
         private bool IsValidSilo(SiloAddress silo)
@@ -340,7 +350,7 @@ namespace Orleans.Runtime.GrainDirectory
             entry = null;
             lock (lockable)
             {
-                if (partitionData.ContainsKey(grain) && partitionData[grain].RemoveActivation(activation, cause, out entry, out wasRemoved))
+                if (partitionData.ContainsKey(grain) && partitionData[grain].RemoveActivation(activation, cause, globalConfig, out entry, out wasRemoved))
                     // if the last activation for the grain was removed, we remove the entire grain info 
                     partitionData.Remove(grain);
 
@@ -478,7 +488,7 @@ namespace Orleans.Runtime.GrainDirectory
         }
 
         /// <summary>
-        /// Merges one partition into another, asuuming partitions are disjoint.
+        /// Merges one partition into another, assuming partitions are disjoint.
         /// This method is supposed to be used by handoff manager to update the partitions when the system view (set of live silos) changes.
         /// </summary>
         /// <param name="other"></param>
@@ -491,7 +501,14 @@ namespace Orleans.Runtime.GrainDirectory
                     if (partitionData.ContainsKey(pair.Key))
                     {
                         if (log.IsVerbose) log.Verbose("While merging two disjoint partitions, same grain " + pair.Key + " was found in both partitions");
-                        partitionData[pair.Key].Merge(pair.Key, pair.Value);
+                        var activationsToDrop = partitionData[pair.Key].Merge(pair.Key, pair.Value);
+                        if (activationsToDrop == null) continue;
+
+                        foreach (var siloActivations in activationsToDrop)
+                        {
+                            var remoteCatalog = grainFactory.GetSystemTarget<ICatalog>(Constants.CatalogId, siloActivations.Key);
+                            remoteCatalog.DeleteActivations(siloActivations.Value).Ignore();
+                        }
                     }
                     else
                     {
@@ -511,7 +528,7 @@ namespace Orleans.Runtime.GrainDirectory
         /// <returns>new grain directory partition containing entries satisfying the given predicate</returns>
         internal GrainDirectoryPartition Split(Predicate<GrainId> predicate, bool modifyOrigin)
         {
-            var newDirectory = new GrainDirectoryPartition(this.siloStatusOracle);
+            var newDirectory = new GrainDirectoryPartition(this.siloStatusOracle, this.globalConfig, this.grainFactory);
 
             if (modifyOrigin)
             {

@@ -2,7 +2,6 @@
 using Orleans.Providers.Streams.Common;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
-using Orleans.Serialization;
 using Orleans.Streams;
 using OrleansAWSUtils.Storage;
 using OrleansAWSUtils.Streams;
@@ -14,29 +13,30 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AWSUtils.Tests.StorageTests;
+using TestExtensions;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace AWSUtils.Tests.Streaming
 {
     [TestCategory("AWS"), TestCategory("SQS")]
+    [Collection(TestEnvironmentFixture.DefaultCollection)]
     public class SQSAdapterTests : IDisposable
     {
         private readonly ITestOutputHelper output;
+        private readonly TestEnvironmentFixture fixture;
         private const int NumBatches = 20;
         private const int NumMessagesPerBatch = 20;
-        private string deploymentId;
+        private readonly string deploymentId;
         public static readonly string SQS_STREAM_PROVIDER_NAME = "SQSAdapterTests";
 
         private static readonly SafeRandom Random = new SafeRandom();
 
-        public SQSAdapterTests(ITestOutputHelper output)
+        public SQSAdapterTests(ITestOutputHelper output, TestEnvironmentFixture fixture)
         {
             this.output = output;
+            this.fixture = fixture;
             this.deploymentId = MakeDeploymentId();
-            LogManager.Initialize(new NodeConfiguration());
-            BufferPool.InitGlobalBufferPool(new MessagingConfiguration(false));
-            SerializationTestEnvironment.Initialize();
         }
 
         public void Dispose()
@@ -55,7 +55,7 @@ namespace AWSUtils.Tests.Streaming
             var config = new ProviderConfiguration(properties, "type", "name");
 
             var adapterFactory = new SQSAdapterFactory();
-            adapterFactory.Init(config, SQS_STREAM_PROVIDER_NAME, LogManager.GetLogger("SQSAdapter", LoggerType.Application), null);
+            adapterFactory.Init(config, SQS_STREAM_PROVIDER_NAME, LogManager.GetLogger("SQSAdapter", LoggerType.Application), this.fixture.Services);
             await SendAndReceiveFromQueueAdapter(adapterFactory, config);
         }
 
@@ -122,7 +122,7 @@ namespace AWSUtils.Tests.Streaming
                 .ToList()
                 .ForEach(streamId =>
                     adapter.QueueMessageBatchAsync(streamId, streamId.ToString(),
-                        events.Take(NumMessagesPerBatch).ToArray(), null, RequestContext.Export()).Wait())));
+                        events.Take(NumMessagesPerBatch).ToArray(), null, RequestContext.Export(this.fixture.SerializationManager)).Wait())));
             await Task.WhenAll(work);
 
             // Make sure we got back everything we sent

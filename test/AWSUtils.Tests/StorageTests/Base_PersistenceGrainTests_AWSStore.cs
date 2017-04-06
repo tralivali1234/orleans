@@ -1,4 +1,5 @@
-﻿using Orleans;
+﻿#if !NETSTANDARD_TODO
+using Orleans;
 using Orleans.Runtime;
 using Orleans.Runtime.TestHooks;
 using Orleans.TestingHost;
@@ -20,7 +21,7 @@ namespace AWSUtils.Tests.StorageTests
     public abstract class Base_PersistenceGrainTests_AWSStore : OrleansTestingBase
     {
         private readonly ITestOutputHelper output;
-        protected TestingSiloHost HostedCluster { get; private set; }
+        protected TestCluster HostedCluster { get; private set; }
         private readonly double timingFactor;
 
         private const int LoopIterations_Grain = 1000;
@@ -28,13 +29,15 @@ namespace AWSUtils.Tests.StorageTests
 
         private const int MaxReadTime = 200;
         private const int MaxWriteTime = 2000;
+        private BaseTestClusterFixture fixture;
 
-        public Base_PersistenceGrainTests_AWSStore(ITestOutputHelper output, BaseClusterFixture fixture)
+        public Base_PersistenceGrainTests_AWSStore(ITestOutputHelper output, BaseTestClusterFixture fixture)
         {
             if (!AWSTestConstants.IsDynamoDbAvailable)
                 throw new SkipException("Unable to connect to DynamoDB simulator");
 
             this.output = output;
+            this.fixture = fixture;
             HostedCluster = fixture.HostedCluster;
             timingFactor = TestUtils.CalibrateTimings();
         }
@@ -42,7 +45,7 @@ namespace AWSUtils.Tests.StorageTests
         protected async Task Grain_AWSStore_Delete()
         {
             Guid id = Guid.NewGuid();
-            IAWSStorageTestGrain grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
+            IAWSStorageTestGrain grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
 
             await grain.DoWrite(1);
 
@@ -60,7 +63,7 @@ namespace AWSUtils.Tests.StorageTests
         protected async Task Grain_AWSStore_Read()
         {
             Guid id = Guid.NewGuid();
-            IAWSStorageTestGrain grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
+            IAWSStorageTestGrain grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
 
             int val = await grain.GetValue();
 
@@ -70,7 +73,7 @@ namespace AWSUtils.Tests.StorageTests
         protected async Task Grain_GuidKey_AWSStore_Read_Write()
         {
             Guid id = Guid.NewGuid();
-            IAWSStorageTestGrain grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
+            IAWSStorageTestGrain grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
 
             int val = await grain.GetValue();
 
@@ -92,7 +95,7 @@ namespace AWSUtils.Tests.StorageTests
         protected async Task Grain_LongKey_AWSStore_Read_Write()
         {
             long id = random.Next();
-            IAWSStorageTestGrain_LongKey grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain_LongKey>(id);
+            IAWSStorageTestGrain_LongKey grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain_LongKey>(id);
 
             int val = await grain.GetValue();
 
@@ -117,7 +120,7 @@ namespace AWSUtils.Tests.StorageTests
             string extKey = random.Next().ToString(CultureInfo.InvariantCulture);
 
             IAWSStorageTestGrain_LongExtendedKey
-                grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain_LongExtendedKey>(id, extKey, null);
+                grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain_LongExtendedKey>(id, extKey, null);
 
             int val = await grain.GetValue();
 
@@ -147,7 +150,7 @@ namespace AWSUtils.Tests.StorageTests
             string extKey = random.Next().ToString(CultureInfo.InvariantCulture);
 
             IAWSStorageTestGrain_GuidExtendedKey
-                grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain_GuidExtendedKey>(id, extKey, null);
+                grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain_GuidExtendedKey>(id, extKey, null);
 
             int val = await grain.GetValue();
 
@@ -175,7 +178,7 @@ namespace AWSUtils.Tests.StorageTests
         {
             long id = random.Next();
 
-            IAWSStorageGenericGrain<int> grain = GrainClient.GrainFactory.GetGrain<IAWSStorageGenericGrain<int>>(id);
+            IAWSStorageGenericGrain<int> grain = this.fixture.GrainFactory.GetGrain<IAWSStorageGenericGrain<int>>(id);
 
             int val = await grain.GetValue();
 
@@ -200,11 +203,11 @@ namespace AWSUtils.Tests.StorageTests
             long id2 = id1;
             long id3 = id1;
 
-            IAWSStorageGenericGrain<int> grain1 = GrainClient.GrainFactory.GetGrain<IAWSStorageGenericGrain<int>>(id1);
+            IAWSStorageGenericGrain<int> grain1 = this.fixture.GrainFactory.GetGrain<IAWSStorageGenericGrain<int>>(id1);
 
-            IAWSStorageGenericGrain<string> grain2 = GrainClient.GrainFactory.GetGrain<IAWSStorageGenericGrain<string>>(id2);
+            IAWSStorageGenericGrain<string> grain2 = this.fixture.GrainFactory.GetGrain<IAWSStorageGenericGrain<string>>(id2);
 
-            IAWSStorageGenericGrain<double> grain3 = GrainClient.GrainFactory.GetGrain<IAWSStorageGenericGrain<double>>(id3);
+            IAWSStorageGenericGrain<double> grain3 = this.fixture.GrainFactory.GetGrain<IAWSStorageGenericGrain<double>>(id3);
 
             int val1 = await grain1.GetValue();
             Assert.Equal(0, val1);  // "Initial value - 1"
@@ -260,13 +263,13 @@ namespace AWSUtils.Tests.StorageTests
 
         protected async Task Grain_AWSStore_SiloRestart()
         {
-            var initialServiceId = this.HostedCluster.Globals.ServiceId;
+            var initialServiceId = this.HostedCluster.ClusterConfiguration.Globals.ServiceId;
             var initialDeploymentId = this.HostedCluster.DeploymentId;
 
-            output.WriteLine("DeploymentId={0} ServiceId={1}", this.HostedCluster.DeploymentId, this.HostedCluster.Globals.ServiceId);
+            output.WriteLine("DeploymentId={0} ServiceId={1}", this.HostedCluster.DeploymentId, this.HostedCluster.ClusterConfiguration.Globals.ServiceId);
 
             Guid id = Guid.NewGuid();
-            IAWSStorageTestGrain grain = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
+            IAWSStorageTestGrain grain = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
 
             int val = await grain.GetValue();
 
@@ -275,12 +278,17 @@ namespace AWSUtils.Tests.StorageTests
             await grain.DoWrite(1);
 
             output.WriteLine("About to reset Silos");
-            this.HostedCluster.RestartDefaultSilos(true);
+            foreach (var silo in this.HostedCluster.GetActiveSilos().ToList())
+            {
+                this.HostedCluster.RestartSilo(silo);
+            }
+            this.HostedCluster.InitializeClient();
+
             output.WriteLine("Silos restarted");
 
-            output.WriteLine("DeploymentId={0} ServiceId={1}", this.HostedCluster.DeploymentId, this.HostedCluster.Globals.ServiceId);
-            Assert.Equal(initialServiceId, this.HostedCluster.Globals.ServiceId);  // "ServiceId same after restart."
-            Assert.NotEqual(initialDeploymentId, this.HostedCluster.DeploymentId);  // "DeploymentId different after restart."
+            output.WriteLine("DeploymentId={0} ServiceId={1}", this.HostedCluster.DeploymentId, this.HostedCluster.ClusterConfiguration.Globals.ServiceId);
+            Assert.Equal(initialServiceId, this.HostedCluster.ClusterConfiguration.Globals.ServiceId);  // "ServiceId same after restart."
+            Assert.Equal(initialDeploymentId, this.HostedCluster.DeploymentId);  // "DeploymentId same after restart."
 
             val = await grain.GetValue();
             Assert.Equal(1, val);  // "Value after Write-1"
@@ -350,7 +358,7 @@ namespace AWSUtils.Tests.StorageTests
             foreach (var silo in silos)
             {
                 string provider = providerType.FullName;
-                ICollection<string> providers = await silo.TestHook.GetStorageProviderNames();
+                ICollection<string> providers = await this.HostedCluster.Client.GetTestHooks(silo).GetStorageProviderNames();
                 Assert.True(providers.Contains(provider), $"No storage provider found: {provider}");
             }
         }
@@ -372,10 +380,10 @@ namespace AWSUtils.Tests.StorageTests
             for (int i = 0; i < n; i++)
             {
                 Guid id = Guid.NewGuid();
-                noStateGrains[i] = GrainClient.GrainFactory.GetGrain<IEchoTaskGrain>(id);
-                memoryGrains[i] = GrainClient.GrainFactory.GetGrain<IPersistenceTestGrain>(id);
-                awsStoreGrains[i] = GrainClient.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
-                memoryStoreGrains[i] = GrainClient.GrainFactory.GetGrain<IMemoryStorageTestGrain>(id);
+                noStateGrains[i] = this.fixture.GrainFactory.GetGrain<IEchoTaskGrain>(id);
+                memoryGrains[i] = this.fixture.GrainFactory.GetGrain<IPersistenceTestGrain>(id);
+                awsStoreGrains[i] = this.fixture.GrainFactory.GetGrain<IAWSStorageTestGrain>(id);
+                memoryStoreGrains[i] = this.fixture.GrainFactory.GetGrain<IMemoryStorageTestGrain>(id);
             }
 
             TimeSpan baseline, elapsed;
@@ -432,3 +440,5 @@ namespace AWSUtils.Tests.StorageTests
         #endregion
     }
 }
+
+#endif

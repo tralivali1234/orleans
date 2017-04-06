@@ -16,16 +16,24 @@ namespace Orleans.Runtime.GrainDirectory
         private const int HANDOFF_CHUNK_SIZE = 500;
         private readonly LocalGrainDirectory localDirectory;
         private readonly ISiloStatusOracle siloStatusOracle;
+        private readonly IInternalGrainFactory grainFactory;
         private readonly Dictionary<SiloAddress, GrainDirectoryPartition> directoryPartitionsMap;
         private readonly List<SiloAddress> silosHoldingMyPartition;
         private readonly Dictionary<SiloAddress, Task> lastPromise;
         private readonly Logger logger;
+        private readonly Factory<GrainDirectoryPartition> createPartion;
 
-        internal GrainDirectoryHandoffManager(LocalGrainDirectory localDirectory, ISiloStatusOracle siloStatusOracle)
+        internal GrainDirectoryHandoffManager(
+            LocalGrainDirectory localDirectory,
+            ISiloStatusOracle siloStatusOracle,
+            IInternalGrainFactory grainFactory,
+            Factory<GrainDirectoryPartition> createPartion)
         {
             logger = LogManager.GetLogger(this.GetType().FullName);
             this.localDirectory = localDirectory;
             this.siloStatusOracle = siloStatusOracle;
+            this.grainFactory = grainFactory;
+            this.createPartion = createPartion;
             directoryPartitionsMap = new Dictionary<SiloAddress, GrainDirectoryPartition>();
             silosHoldingMyPartition = new List<SiloAddress>();
             lastPromise = new Dictionary<SiloAddress, Task>();
@@ -277,7 +285,7 @@ namespace Orleans.Runtime.GrainDirectory
                             this.siloStatusOracle.GetApproximateSiloStatuses(true).Count));
                 }
 
-                directoryPartitionsMap[source] = new GrainDirectoryPartition(this.siloStatusOracle);
+                directoryPartitionsMap[source] = this.createPartion();
             }
 
             if (isFullCopy)

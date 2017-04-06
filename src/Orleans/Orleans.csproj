@@ -1,5 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <DownloadNuGetExe>true</DownloadNuGetExe>
   </PropertyGroup>
@@ -78,13 +79,25 @@
     <Compile Include="Async\UnobservedExceptionsHandlerClass.cs" />
     <Compile Include="Async\TaskExtensions.cs" />
     <Compile Include="CodeGeneration\GeneratedAssembly.cs" />
+    <Compile Include="CodeGeneration\GenericMethodInvoker.cs" />
     <Compile Include="Configuration\GrainServiceConfiguration.cs" />
+    <Compile Include="Core\ClientBuilder.cs" />
+    <Compile Include="Core\ClientBuilderExtensions.cs" />
     <Compile Include="Core\GrainCasterFactory.cs" />
+    <Compile Include="Core\IClientBuilder.cs" />
+    <Compile Include="Core\IClusterConnectionStatusListener.cs" />
     <Compile Include="Core\IInternalGrainFactory.cs" />
+    <Compile Include="Core\IInternalClusterClient.cs" />
+    <Compile Include="Core\IClusterClient.cs" />
+    <Compile Include="Core\ClusterClient.cs" />
+    <Compile Include="LogConsistency\ILogConsistencyDiagnostics.cs" />
     <Compile Include="Logging\LoggerExtensions.cs" />
     <Compile Include="Logging\LoggerImpl.cs" />
     <Compile Include="Logging\LogFormatter.cs" />
     <Compile Include="Logging\LogManager.cs" />
+    <Compile Include="LogConsistency\ConnectionIssues.cs" />
+    <Compile Include="LogConsistency\IConnectionIssueListener.cs" />
+    <Compile Include="Messaging\MessageFactory.cs" />
     <Compile Include="MultiCluster\IMultiClusterGatewayInfo.cs" />
     <Compile Include="CodeGeneration\CodeGeneratorManager.cs" />
     <Compile Include="CodeGeneration\GrainState.cs" />
@@ -104,10 +117,13 @@
     <Compile Include="Core\InterceptedMethodInvokerCache.cs" />
     <Compile Include="Core\IStatefulGrain.cs" />
     <Compile Include="GrainDirectory\MultiClusterStatus.cs" />
+    <Compile Include="LogConsistency\ILogViewAdaptorHost.cs" />
     <Compile Include="Providers\ProviderStateManager.cs" />
+    <Compile Include="Runtime\IGrainReferenceConverter.cs" />
     <Compile Include="Runtime\IGrainTimer.cs" />
     <Compile Include="Runtime\ILocalSiloDetails.cs" />
     <Compile Include="Runtime\RingRange.cs" />
+    <Compile Include="Serialization\ILBasedExceptionSerializer.cs" />
     <Compile Include="Serialization\IExternalSerializer.cs" />
     <Compile Include="Configuration\LimitNames.cs" />
     <Compile Include="Configuration\LimitValue.cs" />
@@ -115,6 +131,9 @@
     <Compile Include="Core\GrainStateStorageBridge.cs" />
     <Compile Include="Core\IGrainIdentity.cs" />
     <Compile Include="MultiCluster\MultiClusterConfiguration.cs" />
+    <Compile Include="MultiCluster\IProtocolParticipant.cs" />
+    <Compile Include="LogConsistency\ILogViewAdaptor.cs" />
+    <Compile Include="LogConsistency\ILogConsistentGrain.cs" />
     <Compile Include="Core\IStorage.cs" />
     <Compile Include="GlobalSuppressions.cs" />
     <Compile Include="GrainDirectory\MultiClusterRegistrationStrategy.cs" />
@@ -128,7 +147,9 @@
     <Compile Include="Messaging\RequestInvocationHistory.cs" />
     <Compile Include="Messaging\Response.cs" />
     <Compile Include="Providers\IControllable.cs" />
+    <Compile Include="LogConsistency\ILogConsistencyProvider.cs" />
     <Compile Include="Providers\StorageProviderUtils.cs" />
+    <Compile Include="LogConsistency\ILogConsistencyProtocolServices.cs" />
     <Compile Include="Runtime\IAddressable.cs" />
     <Compile Include="Placement\PreferLocalPlacement.cs" />
     <Compile Include="AssemblyLoader\AssemblyLoader.cs" />
@@ -143,13 +164,27 @@
     <Compile Include="Serialization\ILGenerationException.cs" />
     <Compile Include="Serialization\ILSerializerGenerator.cs" />
     <Compile Include="Serialization\ILDelegateBuilder.cs" />
+    <Compile Include="Serialization\IOnDeserialized.cs" />
     <Compile Include="Serialization\OrleansJsonSerializer.cs" />
     <Compile Include="Serialization\BinaryFormatterSerializer.cs" />
     <Compile Include="Services\IGrainServiceClient.cs" />
     <Compile Include="Services\IGrainService.cs" />
+    <Compile Include="Serialization\RemoteNonDeserializableException.cs" />
+    <Compile Include="Serialization\TypeSerializer.cs" />
+    <Compile Include="Streams\Core\IStreamSubscriptionManager.cs" />
+    <Compile Include="Streams\Core\IStreamSubscriptionManagerAdmin.cs" />
+    <Compile Include="Streams\Core\IStreamSubscriptionManagerRetriever.cs" />
+    <Compile Include="Streams\Core\StreamSubscription.cs" />
+    <Compile Include="Streams\Core\StreamSubscriptionManager.cs" />
+    <Compile Include="Streams\Core\StreamSubscriptionManagerAdmin.cs" />
+    <Compile Include="Streams\Core\SubscriptionChangeHandler.cs" />
+    <Compile Include="Streams\Providers\StreamProviderManagerExtensions.cs" />
+    <Compile Include="Streams\Providers\StreamProviderUtils.cs" />
+    <Compile Include="Streams\PubSub\StreamSubscriptionManagerExtensions.cs" />
+    <Compile Include="Utils\Factory.cs" />
+    <Compile Include="Utils\IKeyedServiceCollection.cs" />
     <Compile Include="Utils\ReferenceEqualsComparer.cs" />
     <Compile Include="Serialization\ReflectedSerializationMethodInfo.cs" />
-    <Compile Include="Serialization\SerializationTestEnvironment.cs" />
     <Compile Include="Streams\Core\StreamIdentity.cs" />
     <Compile Include="Streams\Internal\StreamHandshakeToken.cs" />
     <Compile Include="Streams\PersistentStreams\IDeploymentConfiguration.cs" />
@@ -160,6 +195,7 @@
     <Compile Include="Streams\Predicates\DefaultStreamFilterPredicateWrapper.cs" />
     <Compile Include="Streams\PubSub\FaultedSubscriptionException.cs" />
     <Compile Include="SystemTargetInterfaces\IClusterGrainDirectory.cs" />
+    <Compile Include="SystemTargetInterfaces\ILogConsistencyProtocolGateway.cs" />
     <Compile Include="Streams\PubSub\ImplicitStreamPubSub.cs" />
     <Compile Include="Streams\PubSub\StreamPubSubImpl.cs" />
     <Compile Include="Streams\QueueAdapters\IQueueFlowController.cs" />
@@ -262,7 +298,7 @@
     <Compile Include="Streams\Core\StreamSequenceToken.cs" />
     <Compile Include="Streams\Core\StreamSubscriptionHandle.cs" />
     <Compile Include="Timers\AsyncTaskSafeTimer.cs" />
-    <Compile Include="Timers\TimerRegistry.cs" />
+    <Compile Include="Utils\ServiceCollectionExtensions.cs" />
     <Compile Include="Utils\SetExtensions.cs" />
     <Compile Include="Placement\ActivationCountBasedPlacement.cs" />
     <Compile Include="Placement\StatelessWorkerPlacement.cs" />
@@ -381,7 +417,6 @@
     <Compile Include="Serialization\SerializationContext.cs" />
     <Compile Include="Serialization\SerializationManager.cs" />
     <Compile Include="Core\Grain.cs" />
-    <Compile Include="Runtime\RuntimeClient.cs" />
     <Compile Include="Runtime\GrainReference.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Utils\Utils.cs" />
@@ -416,7 +451,7 @@
     <!-- Show values of some useful properties -->
     <Message Importance="high" Text="Orleans.csproj -- Build Properties =  &#xD;&#xA;TeamProject=$(TeamProject)&#xD;&#xA;SolutionRoot=$(SolutionRoot)&#xD;&#xA;SourcesDirectory=$(SourcesDirectory)&#xD;&#xA;BinariesDirectory=$(BinariesDirectory)&#xD;&#xA;BinariesRoot=$(BinariesRoot)&#xD;&#xA;BuildDirectory=$(BuildDirectory)&#xD;&#xA;BuildProjectFolderPath=$(BuildProjectFolderPath)&#xD;&#xA;MSBuildProjectDirectory=$(MSBuildProjectDirectory)&#xD;&#xA;OutputPath=$(OutputPath)&#xD;&#xA;OutDir=$(OutDir)&#xD;&#xA;DropLocation=$(DropLocation)&#xD;&#xA;PackagesDirectory=$(PackagesDirectory)&#xD;&#xA;BuildNumber=$(BuildNumber)&#xD;&#xA;builduri=$(builduri)&#xD;&#xA;BuildUri=$(BuildUri)&#xD;&#xA;MSBuildForwardPropertiesFromChild=$(MSBuildForwardPropertiesFromChild)&#xD;&#xA;BuildingInsideVisualStudio=$(BuildingInsideVisualStudio)&#xD;&#xA;IsDesktopBuild=$(IsDesktopBuild)" />
   </Target>
-  <Target Name="OrleansDllBootstrapUsingCodeGen" AfterTargets="BeforeCompile" BeforeTargets="CoreCompile" Inputs="@(ReferencePath)" Outputs="$(IntermediateOutputPath)$(TargetName).codegen.cs" Condition="'$(Bootstrap)' != 'true'">
+  <Target Name="OrleansDllBootstrapUsingCodeGen" AfterTargets="BeforeCompile" BeforeTargets="CoreCompile" Inputs="@(ReferencePath)" Outputs="$(IntermediateOutputPath)$(TargetName).orleans.g.cs" Condition="'$(Bootstrap)' != 'true'">
     <Message Text="[OrleansDllBootstrapUsingCodeGen] - Bootstrapping the Orleans.dll" Importance="high" />
     <PropertyGroup>
       <BootstrapOutputPath>$(OutDir)Bootstrap\</BootstrapOutputPath>
@@ -433,19 +468,19 @@
     <!-- Finally invoke code generator on the recently built Orleans.dll -->
     <Message Text="[OrleansDllBootstrapUsingCodeGen] - Preprocessing $(TargetName)$(TargetExt) with ClientGenerator.exe" Importance="high" />
     <PropertyGroup>
-      <ArgsFile>$(IntermediateOutputPath)$(TargetName).codegen.args.txt</ArgsFile>
-      <CodeGenFilename>$(IntermediateOutputPath)$(TargetName).codegen.cs</CodeGenFilename>
+      <ArgsFile>$(IntermediateOutputPath)$(TargetName).orleans.g.args.txt</ArgsFile>
+      <CodeGenFilename>$(IntermediateOutputPath)$(TargetName).orleans.g.cs</CodeGenFilename>
     </PropertyGroup>
     <ItemGroup>
       <CodeGenArgs Include="/in:$(BootstrapOutputPath)$(TargetName)$(TargetExt)" />
-      <CodeGenArgs Include="/out:$(CodeGenFilename)"/>
+      <CodeGenArgs Include="/out:$(CodeGenFilename)" />
       <CodeGenArgs Include="@(ReferencePath->'/r:%(Identity)')" />
     </ItemGroup>
     <WriteLinesToFile Overwrite="true" File="$(ArgsFile)" Lines="@(CodeGenArgs)" />
     <Message Text="[OrleansDllBootstrapUsingCodeGen] - Invoking Code Generator" />
     <Exec Command="&quot;$(BootstrapOutputPath)ClientGenerator.exe&quot; &quot;@$(ArgsFile)&quot;" Outputs="$(CodeGenFilename)">
-       <Output TaskParameter="Outputs" ItemName="Compile" />
-       <Output TaskParameter="Outputs" ItemName="FileWrites" />
+      <Output TaskParameter="Outputs" ItemName="Compile" />
+      <Output TaskParameter="Outputs" ItemName="FileWrites" />
     </Exec>
   </Target>
 </Project>

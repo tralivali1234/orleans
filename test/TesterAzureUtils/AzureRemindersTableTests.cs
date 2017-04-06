@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Orleans;
 using Orleans.AzureUtils;
 using Orleans.Runtime;
@@ -6,8 +7,6 @@ using Orleans.Runtime.ReminderService;
 using Tester;
 using Tester.AzureUtils;
 using TestExtensions;
-using UnitTests.MembershipTests;
-using UnitTests.StorageTests;
 using Xunit;
 
 namespace UnitTests.RemindersTest
@@ -15,9 +14,10 @@ namespace UnitTests.RemindersTest
     /// <summary>
     /// Tests for operation of Orleans Reminders Table using Azure
     /// </summary>
-    public class AzureRemindersTableTests : ReminderTableTestsBase, IClassFixture<AzureStorageBasicTestFixture>
+    [TestCategory("Reminders"), TestCategory("Azure")]
+    public class AzureRemindersTableTests : ReminderTableTestsBase, IClassFixture<AzureStorageBasicTests>
     {
-        public AzureRemindersTableTests(ConnectionStringFixture fixture) : base(fixture)
+        public AzureRemindersTableTests(ConnectionStringFixture fixture, TestEnvironmentFixture environment) : base(fixture, environment)
         {
             LogManager.AddTraceLevelOverride("AzureTableDataManager", Severity.Verbose3);
             LogManager.AddTraceLevelOverride("OrleansSiloInstanceManager", Severity.Verbose3);
@@ -33,32 +33,34 @@ namespace UnitTests.RemindersTest
 
         protected override IReminderTable CreateRemindersTable()
         {
-            return new AzureBasedReminderTable();
+            TestUtils.CheckForAzureStorage();
+            return new AzureBasedReminderTable(this.ClusterFixture.Services.GetRequiredService<IGrainReferenceConverter>());
         }
 
-        protected override string GetConnectionString()
+        protected override Task<string> GetConnectionString()
         {
-            return TestDefaultConfiguration.DataConnectionString;
+            TestUtils.CheckForAzureStorage();
+            return Task.FromResult(TestDefaultConfiguration.DataConnectionString);
         }
 
-        [Fact, TestCategory("Reminders"), TestCategory("Azure")]
+        [SkippableFact]
         public void RemindersTable_Azure_Init()
         {
         }
 
-        [Fact, TestCategory("Reminders"), TestCategory("Azure")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task RemindersTable_Azure_RemindersRange()
         {
             await RemindersRange(50);
         }
 
-        [Fact, TestCategory("Reminders"), TestCategory("Azure")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task RemindersTable_Azure_RemindersParallelUpsert()
         {
             await RemindersParallelUpsert();
         }
 
-        [Fact, TestCategory("Reminders"), TestCategory("Azure")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task RemindersTable_Azure_ReminderSimple()
         {
             await ReminderSimple();

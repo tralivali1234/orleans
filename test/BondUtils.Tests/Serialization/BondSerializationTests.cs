@@ -1,24 +1,34 @@
 using Bond;
+using Orleans.Runtime.Configuration;
+using TestExtensions;
 using Xunit;
 
 namespace BondUtils.Tests.Serialization
 {
-    using System.Collections.Generic;
     using System.Reflection;
     using Orleans.Serialization;
 
     public class BondSerializationTests
     {
+        private readonly SerializationTestEnvironment environment;
+
         public BondSerializationTests()
         {
-            SerializationTestEnvironment.Initialize(new List<TypeInfo> { typeof(BondSerializer).GetTypeInfo() }, null);
+            this.environment = SerializationTestEnvironment.InitializeWithDefaults(
+                new ClientConfiguration
+                {
+                    SerializationProviders =
+                    {
+                        typeof(BondSerializer).GetTypeInfo()
+                    }
+                });
         }
 
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("Serialization")]
         public void SimpleBondSchemaSerializationTest()
         {
             var schema = new SimpleBondSchema { SomeValue = int.MaxValue };
-            var output = SerializationManager.RoundTripSerializationForTesting(schema);
+            var output = this.environment.SerializationManager.RoundTripSerializationForTesting(schema);
             Assert.NotSame(output, schema); //The serializer returned an instance of the same object
             Assert.Equal(schema.SomeValue, output.SomeValue); //The serialization didn't preserve the proper value
         }
@@ -27,7 +37,7 @@ namespace BondUtils.Tests.Serialization
         public void SimpleGenericBondSchemaSerializationTest()
         {
             var schema = new SimpleGenericSchema<int> { SomeValue = int.MaxValue };
-            var output = SerializationManager.RoundTripSerializationForTesting(schema);
+            var output = this.environment.SerializationManager.RoundTripSerializationForTesting(schema);
             Assert.NotSame(output, schema); //The serializer returned an instance of the same object
             Assert.Equal(schema.SomeValue, output.SomeValue); //The serialization didn't preserve the proper value
         }
@@ -46,7 +56,7 @@ namespace BondUtils.Tests.Serialization
                 }
             };
 
-            var output = SerializationManager.RoundTripSerializationForTesting(schema);
+            var output = this.environment.SerializationManager.RoundTripSerializationForTesting(schema);
             Assert.NotNull(output);
             Assert.NotSame(output, schema); //The serializer returned an instance of the same object
             Assert.Equal(schema.SomeValue.SomeValue.SomeValue, output.SomeValue.SomeValue.SomeValue); //The serialization didn't preserve the proper value
@@ -56,7 +66,7 @@ namespace BondUtils.Tests.Serialization
         public void SimpleBondSchemaCopyTest()
         {
             var schema = new SimpleBondSchema { SomeValue = int.MaxValue };
-            var output = SerializationManager.DeepCopy(schema) as SimpleBondSchema;
+            var output = this.environment.SerializationManager.DeepCopy(schema) as SimpleBondSchema;
             Assert.NotSame(output, schema);  //The serializer returned an instance of the same object"
             Assert.Equal(schema.SomeValue, output.SomeValue); //The serialization didn't preserve the proper value
         }
@@ -65,7 +75,7 @@ namespace BondUtils.Tests.Serialization
         public void SimpleGenericBondSchemaCopyTest()
         {
             var schema = new SimpleGenericSchema<int> { SomeValue = int.MaxValue };
-            var output = SerializationManager.DeepCopy(schema) as SimpleGenericSchema<int>;
+            var output = this.environment.SerializationManager.DeepCopy(schema) as SimpleGenericSchema<int>;
             Assert.NotSame(output, schema); //The serializer returned an instance of the same object
             Assert.Equal(schema.SomeValue, output.SomeValue); //The serialization didn't preserve the proper value
         }
@@ -84,7 +94,7 @@ namespace BondUtils.Tests.Serialization
                 }
             };
 
-            var output = SerializationManager.DeepCopy(schema) as SimpleGenericSchema<SimpleGenericSchema<SimpleBondSchema>>;
+            var output = this.environment.SerializationManager.DeepCopy(schema) as SimpleGenericSchema<SimpleGenericSchema<SimpleBondSchema>>;
             Assert.NotNull(output);
             Assert.NotSame(output, schema); //The serializer returned an instance of the same object
             Assert.Equal(schema.SomeValue.SomeValue.SomeValue, output.SomeValue.SomeValue.SomeValue); //The serialization didn't preserve the proper value

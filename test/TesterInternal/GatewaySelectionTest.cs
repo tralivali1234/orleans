@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 
 namespace UnitTests.MessageCenterTests
 {
-    public class GatewaySelectionTest : IDisposable
+    public class GatewaySelectionTest
     {
         protected readonly ITestOutputHelper output;
 
@@ -29,14 +29,6 @@ namespace UnitTests.MessageCenterTests
         public GatewaySelectionTest(ITestOutputHelper output)
         {
             this.output = output;
-            GrainClient.Uninitialize();
-            GrainClient.TestOnlyNoConnect = false;
-        }
-        
-        public void Dispose()
-        {
-            GrainClient.Uninitialize();
-            GrainClient.TestOnlyNoConnect = false;
         }
 
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("Gateway")]
@@ -52,14 +44,19 @@ namespace UnitTests.MessageCenterTests
             var cfg = new ClientConfiguration();
             cfg.Gateways = null;
             bool failed = false;
+            IDisposable client = null;
             try
             {
-                GrainClient.Initialize(cfg);
+                new ClientBuilder().UseConfiguration(cfg).Build();
             }
             catch (Exception exc)
             {
                 output.WriteLine(exc.ToString());
                 failed = true;
+            }
+            finally
+            {
+                client?.Dispose();
             }
             Assert.True(failed, "GatewaySelection_EmptyList failed as GatewayManager did not throw on empty Gateway list.");
 

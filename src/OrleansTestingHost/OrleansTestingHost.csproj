@@ -51,6 +51,7 @@
     </Compile>
     <Compile Include="AppDomainSiloHandle.cs" />
     <Compile Include="AppDomainSiloHost.cs" />
+    <Compile Include="ClientExtensions.cs" />
     <Compile Include="Extensions\ConfigurationExtensions.cs" />
     <Compile Include="Extensions\TestConfigurationExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -59,6 +60,7 @@
     <Compile Include="TestStorageProviders\FaultyMemoryStorage.cs" />
     <Compile Include="TestStorageProviders\IStorageFaultGrain.cs" />
     <Compile Include="TestStorageProviders\StorageFaultGrain.cs" />
+    <Compile Include="LogConsistencyProviderConfiguration.cs" />
     <Compile Include="Utils\AsyncResultHandle.cs" />
     <Compile Include="Utils\NoOpTestLogger.cs" />
     <Compile Include="Utils\StorageEmulator.cs" />

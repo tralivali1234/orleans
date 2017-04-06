@@ -11,13 +11,13 @@ using Orleans.Providers.Streams.AzureQueue;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.TestingHost;
-using Tester;
 using TestExtensions;
 using UnitTests.GrainInterfaces;
 using UnitTests.Grains;
 using UnitTests.StreamingTests;
 using Xunit;
 using Xunit.Abstractions;
+using Tester;
 
 // ReSharper disable ConvertToConstant.Local
 // ReSharper disable CheckNamespace
@@ -40,6 +40,8 @@ namespace UnitTests.Streaming.Reliability
 
         public override TestCluster CreateTestCluster()
         {
+            TestUtils.CheckForAzureStorage();
+
             this.numExpectedSilos = 2;
             var options = new TestClusterOptions(initialSilosCount: (short)this.numExpectedSilos);
             options.ClusterConfiguration.Globals.LivenessType = GlobalConfiguration.LivenessProviderType.AzureTable;
@@ -54,7 +56,6 @@ namespace UnitTests.Streaming.Reliability
             options.ClusterConfiguration.AddAzureQueueStreamProvider(AZURE_QUEUE_STREAM_PROVIDER_NAME);
             options.ClusterConfiguration.AddAzureQueueStreamProvider("AzureQueueProvider2");
 
-            options.ClusterConfiguration.Globals.MaxMessageBatchingSize = 100;
             options.ClusterConfiguration.Globals.ServiceId = Guid.NewGuid();
 
             options.ClientConfiguration.AddSimpleMessageStreamProvider(SMS_STREAM_PROVIDER_NAME, fireAndForgetDelivery: false);
@@ -90,7 +91,7 @@ namespace UnitTests.Streaming.Reliability
             }
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public void Baseline_StreamRel()
         {
             // This test case is just a sanity-check that the silo test config is OK.
@@ -99,7 +100,7 @@ namespace UnitTests.Streaming.Reliability
             StreamTestUtils.LogEndTest(testName, logger);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public void Baseline_StreamRel_RestartSilos()
         {
             // This test case is just a sanity-check that the silo test config is OK.
@@ -120,7 +121,7 @@ namespace UnitTests.Streaming.Reliability
             StreamTestUtils.LogEndTest(testName, logger);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_Baseline_StreamRel()
         {
             // This test case is just a sanity-check that the SMS test config is OK.
@@ -140,7 +141,7 @@ namespace UnitTests.Streaming.Reliability
             StreamTestUtils.LogEndTest(testName, logger);
         }
 
-        [Fact, TestCategory("Functional"), TestCategory("Azure")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure")]
         public async Task AQ_Baseline_StreamRel()
         {
             // This test case is just a sanity-check that the AzureQueue test config is OK.
@@ -158,21 +159,21 @@ namespace UnitTests.Streaming.Reliability
             StreamTestUtils.LogEndTest(testName, logger);
         }
 
-        [Fact(Skip ="Ignore"), TestCategory("Failures"), TestCategory("Streaming"), TestCategory("Reliability")]
+        [SkippableFact(Skip ="Ignore"), TestCategory("Failures"), TestCategory("Streaming"), TestCategory("Reliability")]
         public async Task SMS_AddMany_Consumers()
         {
             const string testName = "SMS_AddMany_Consumers";
             await Test_AddMany_Consumers(testName, SMS_STREAM_PROVIDER_NAME);
         }
 
-        [Fact(Skip = "Ignore"), TestCategory("Failures"), TestCategory("Streaming"), TestCategory("Reliability"), TestCategory("Azure")]
+        [SkippableFact(Skip = "Ignore"), TestCategory("Failures"), TestCategory("Streaming"), TestCategory("Reliability"), TestCategory("Azure")]
         public async Task AQ_AddMany_Consumers()
         {
             const string testName = "AQ_AddMany_Consumers";
             await Test_AddMany_Consumers(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_PubSub_MultiConsumerSameGrain()
         {
             const string testName = "SMS_PubSub_MultiConsumerSameGrain";
@@ -180,7 +181,7 @@ namespace UnitTests.Streaming.Reliability
         }
         // AQ_PubSub_MultiConsumerSameGrain not required - does not use PubSub
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_PubSub_MultiProducerSameGrain()
         {
             const string testName = "SMS_PubSub_MultiProducerSameGrain";
@@ -188,7 +189,7 @@ namespace UnitTests.Streaming.Reliability
         }
         // AQ_PubSub_MultiProducerSameGrain not required - does not use PubSub
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_PubSub_Unsubscribe()
         {
             const string testName = "SMS_PubSub_Unsubscribe";
@@ -197,7 +198,7 @@ namespace UnitTests.Streaming.Reliability
         // AQ_PubSub_Unsubscribe not required - does not use PubSub
 
         //TODO: This test fails because the resubscribe to streams after restart creates a new subscription, losing the events on the previous subscription.  Should be fixed when 'renew' subscription feature is added. - jbragg
-        [Fact, TestCategory("Functional"), TestCategory("Failures")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Failures")]
         public async Task SMS_StreamRel_AllSilosRestart_PubSubCounts()
         {
             const string testName = "SMS_StreamRel_AllSilosRestart_PubSubCounts";
@@ -205,14 +206,14 @@ namespace UnitTests.Streaming.Reliability
         }
         // AQ_StreamRel_AllSilosRestart_PubSubCounts not required - does not use PubSub
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_AllSilosRestart()
         {
             const string testName = "SMS_StreamRel_AllSilosRestart";
 
             await Test_AllSilosRestart(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_AllSilosRestart()
         {
             const string testName = "AQ_StreamRel_AllSilosRestart";
@@ -220,14 +221,14 @@ namespace UnitTests.Streaming.Reliability
             await Test_AllSilosRestart(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_SiloJoins()
         {
             const string testName = "SMS_StreamRel_SiloJoins";
 
             await Test_SiloJoins(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_SiloJoins()
         {
             const string testName = "AQ_StreamRel_SiloJoins";
@@ -235,52 +236,52 @@ namespace UnitTests.Streaming.Reliability
             await Test_SiloJoins(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_SiloDies_Consumer()
         {
             const string testName = "SMS_StreamRel_SiloDies_Consumer";
             await Test_SiloDies_Consumer(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_SiloDies_Consumer()
         {
             const string testName = "AQ_StreamRel_SiloDies_Consumer";
             await Test_SiloDies_Consumer(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_SiloDies_Producer()
         {
             const string testName = "SMS_StreamRel_SiloDies_Producer";
             await Test_SiloDies_Producer(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_SiloDies_Producer()
         {
             const string testName = "AQ_StreamRel_SiloDies_Producer";
             await Test_SiloDies_Producer(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_SiloRestarts_Consumer()
         {
             const string testName = "SMS_StreamRel_SiloRestarts_Consumer";
             await Test_SiloRestarts_Consumer(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_SiloRestarts_Consumer()
         {
             const string testName = "AQ_StreamRel_SiloRestarts_Consumer";
             await Test_SiloRestarts_Consumer(testName, AZURE_QUEUE_STREAM_PROVIDER_NAME);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_StreamRel_SiloRestarts_Producer()
         {
             const string testName = "SMS_StreamRel_SiloRestarts_Producer";
             await Test_SiloRestarts_Producer(testName, SMS_STREAM_PROVIDER_NAME);
         }
-        [Fact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Azure"), TestCategory("AzureQueue")]
         public async Task AQ_StreamRel_SiloRestarts_Producer()
         {
             const string testName = "AQ_StreamRel_SiloRestarts_Producer";
@@ -443,16 +444,16 @@ namespace UnitTests.Streaming.Reliability
             when = "After BecomeProducer";
             // Note: Only semantics guarenteed for producer is that they will have been registered by time that first msg is sent.
             await producerGrain.SendItem(0);
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             logger.Info("AddConsumer x 2 : StreamId={0} Provider={1}", _streamId, _streamProviderName);
             await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After first AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After second AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             StreamTestUtils.LogEndTest(testName, logger);
         }
@@ -479,21 +480,21 @@ namespace UnitTests.Streaming.Reliability
             when = "After first BecomeProducer";
             // Note: Only semantics guarenteed for producer is that they will have been registered by time that first msg is sent.
             await producerGrain.SendItem(0);
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             await producerGrain.BecomeProducer(_streamId, _streamProviderName);
             when = "After second BecomeProducer";
             await producerGrain.SendItem(0);
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             logger.Info("AddConsumer x 2 : StreamId={0} Provider={1}", _streamId, _streamProviderName);
             await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After first AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After second AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             StreamTestUtils.LogEndTest(testName, logger);
         }
@@ -522,22 +523,22 @@ namespace UnitTests.Streaming.Reliability
             when = "After BecomeProducer";
             // Note: Only semantics guarenteed are that producer will have been registered by time that first msg is sent.
             await producerGrain.SendItem(0);
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             logger.Info("AddConsumer x 2 : StreamId={0} Provider={1}", _streamId, _streamProviderName);
             var c1 = await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After first AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
             await CheckConsumerCounts(when, consumerGrain, 1);
             var c2 = await consumerGrain.AddConsumer(_streamId, _streamProviderName);
             when = "After second AddConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 2, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
             await CheckConsumerCounts(when, consumerGrain, 2);
 
             logger.Info("RemoveConsumer: StreamId={0} Provider={1}", _streamId, _streamProviderName);
             await consumerGrain.RemoveConsumer(_streamId, _streamProviderName, c1);
             when = "After first RemoveConsumer";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
             await CheckConsumerCounts(when, consumerGrain, 1);
 #if REMOVE_PRODUCER
             logger.Info("RemoveProducer: StreamId={0} Provider={1}", _streamId, _streamProviderName);
@@ -552,14 +553,14 @@ namespace UnitTests.Streaming.Reliability
 #if REMOVE_PRODUCER
             await CheckPubSubCounts(when, 0, 0);
 #else
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 0, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 #endif
             await CheckConsumerCounts(when, consumerGrain, 0);
 
             StreamTestUtils.LogEndTest(testName, logger);
         }
 
-        [Fact, TestCategory("Functional")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task SMS_AllSilosRestart_UnsubscribeConsumer()
         {
             const string testName = "SMS_AllSilosRestart_UnsubscribeConsumer";
@@ -569,7 +570,7 @@ namespace UnitTests.Streaming.Reliability
             StreamTestUtils.LogStartTest(testName, _streamId, _streamProviderName, logger, HostedCluster);
 
             long consumerGrainId = random.Next();
-            var consumerGrain = GrainClient.GrainFactory.GetGrain<IStreamUnsubscribeTestGrain>(consumerGrainId);
+            var consumerGrain = this.GrainFactory.GetGrain<IStreamUnsubscribeTestGrain>(consumerGrainId);
 
             logger.Info("Subscribe: StreamId={0} Provider={1}", _streamId, _streamProviderName);
             await consumerGrain.Subscribe(_streamId, _streamProviderName);
@@ -629,7 +630,7 @@ namespace UnitTests.Streaming.Reliability
  await Do_BaselineTest(consumerGrainId, producerGrainId);
 
             string when = "Before restart all silos";
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             // Restart silos
             //RestartDefaultSilosButKeepCurrentClient(testName);
@@ -639,12 +640,12 @@ namespace UnitTests.Streaming.Reliability
             CheckSilosRunning(when, numExpectedSilos);
             // Note: It is not guaranteed that the list of producers will not get modified / cleaned up during silo shutdown, so can't assume count will be 1 here. 
             // Expected == -1 means don't care.
-            await StreamTestUtils.CheckPubSubCounts(output, when, -1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, -1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             await producerGrain.SendItem(1);
             when = "After SendItem";
 
-            await StreamTestUtils.CheckPubSubCounts(output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
+            await StreamTestUtils.CheckPubSubCounts(this.InternalClient, output, when, 1, 1, _streamId, _streamProviderName, StreamTestsConstants.StreamReliabilityNamespace);
 
             var consumerGrain = GetGrain(consumerGrainId);
             await CheckReceivedCounts(when, consumerGrain, 1, 0);
@@ -954,7 +955,7 @@ namespace UnitTests.Streaming.Reliability
 #if USE_GENERICS
             return StreamReliabilityTestGrainFactory<int>.GetGrain(grainId);
 #else
-            return GrainClient.GrainFactory.GetGrain<IStreamReliabilityTestGrain>(grainId);
+            return this.GrainFactory.GetGrain<IStreamReliabilityTestGrain>(grainId);
 #endif
         }
 
@@ -1014,7 +1015,7 @@ namespace UnitTests.Streaming.Reliability
 #else
             string grainType = typeof(StreamReliabilityTestGrain).FullName;
 #endif
-            IManagementGrain mgmtGrain = GrainClient.GrainFactory.GetGrain<IManagementGrain>(0);
+            IManagementGrain mgmtGrain = this.GrainFactory.GetGrain<IManagementGrain>(0);
 
             SimpleGrainStatistic[] grainStats = await mgmtGrain.GetSimpleGrainStatistics();
             output.WriteLine("Found grains " + Utils.EnumerableToString(grainStats));

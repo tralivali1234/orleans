@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26009.0
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{013DFD29-E1DB-4968-A67B-C2342E6F5B6E}"
 	ProjectSection(SolutionItems) = preProject
@@ -69,6 +69,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nuget", "Nuget", "{014CD19F
 		NuGet\Microsoft.Orleans.OrleansAzureUtils.nuspec = NuGet\Microsoft.Orleans.OrleansAzureUtils.nuspec
 		NuGet\Microsoft.Orleans.OrleansCodeGenerator.Build.nuspec = NuGet\Microsoft.Orleans.OrleansCodeGenerator.Build.nuspec
 		NuGet\Microsoft.Orleans.OrleansCodeGenerator.nuspec = NuGet\Microsoft.Orleans.OrleansCodeGenerator.nuspec
+		NuGet\Microsoft.Orleans.OrleansConsulUtils.nuspec = NuGet\Microsoft.Orleans.OrleansConsulUtils.nuspec
 		NuGet\Microsoft.Orleans.OrleansHost.nuspec = NuGet\Microsoft.Orleans.OrleansHost.nuspec
 		NuGet\Microsoft.Orleans.OrleansManager.nuspec = NuGet\Microsoft.Orleans.OrleansManager.nuspec
 		NuGet\Microsoft.Orleans.OrleansProviders.nuspec = NuGet\Microsoft.Orleans.OrleansProviders.nuspec
@@ -198,15 +199,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrleansTelemetryConsumers.C
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Benchmarks", "Benchmarks", "{24596567-5805-4493-B4F0-46BA4811C0AA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrleansBenchmarkGrainInterfaces", "..\test\Benchmarks\OrleansBenchmarkGrainInterfaces\OrleansBenchmarkGrainInterfaces.csproj", "{936397DF-8D11-4244-A493-767D31F9D727}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BenchmarkGrainInterfaces", "..\test\Benchmarks\BenchmarkGrainInterfaces\BenchmarkGrainInterfaces.csproj", "{936397DF-8D11-4244-A493-767D31F9D727}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrleansBenchmarkGrains", "..\test\Benchmarks\OrleansBenchmarkGrains\OrleansBenchmarkGrains.csproj", "{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BenchmarkGrains", "..\test\Benchmarks\BenchmarkGrains\BenchmarkGrains.csproj", "{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OrleansBenchmarks", "..\test\Benchmarks\OrleansBenchmarks\OrleansBenchmarks.csproj", "{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmarks", "..\test\Benchmarks\Benchmarks\Benchmarks.csproj", "{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestServiceFabric", "..\test\TestServiceFabric\TestServiceFabric.csproj", "{B93B3853-FD54-4615-891A-9AFA3D9D32A2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Orleans.NonSiloTests", "..\test\NonSiloTests\Orleans.NonSiloTests.csproj", "{003DFE72-F1CA-4E79-8A84-EDF5D277EB16}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NonSilo.Tests", "..\test\NonSilo.Tests\NonSilo.Tests.csproj", "{003DFE72-F1CA-4E79-8A84-EDF5D277EB16}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TesterAzureUtils", "..\test\TesterAzureUtils\TesterAzureUtils.csproj", "{DEE80624-685B-4C84-99EC-C0A637B6FB34}"
 EndProject
@@ -225,6 +226,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PSUtils.Tests", "..\test\PSUtils.Tests\PSUtils.Tests.csproj", "{995116BD-4354-46F0-8BE5-80AE46541DA6}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BondUtils.Tests", "..\test\BondUtils.Tests\BondUtils.Tests.csproj", "{9DDE0641-6E2D-4CED-9853-8513B2037EAD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Consul.Tests", "..\test\Consul.Tests\Consul.Tests.csproj", "{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Versions", "Versions", "{2C188181-1B01-4E77-A83D-F6A2EA855BE9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestVersionGrains", "..\test\Versions\TestVersionGrains\TestVersionGrains.csproj", "{668AC915-7C11-4EC7-A899-BB49011E529A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestVersionGrains2", "..\test\Versions\TestVersionGrains2\TestVersionGrains2.csproj", "{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -477,6 +486,7 @@ Global
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Debug|x64.Build.0 = Debug|Any CPU
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6AD37425-7CB4-4D23-80C3-A9D143329A66}.Release|x64.ActiveCfg = Release|Any CPU
@@ -491,6 +501,7 @@ Global
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{67738E6C-F292-46A2-994D-5B52E745205B}.Debug|x64.Build.0 = Debug|Any CPU
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Release|Any CPU.Build.0 = Release|Any CPU
 		{67738E6C-F292-46A2-994D-5B52E745205B}.Release|x64.ActiveCfg = Release|Any CPU
@@ -505,18 +516,21 @@ Global
 		{936397DF-8D11-4244-A493-767D31F9D727}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{936397DF-8D11-4244-A493-767D31F9D727}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{936397DF-8D11-4244-A493-767D31F9D727}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{936397DF-8D11-4244-A493-767D31F9D727}.Debug|x64.Build.0 = Debug|Any CPU
 		{936397DF-8D11-4244-A493-767D31F9D727}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{936397DF-8D11-4244-A493-767D31F9D727}.Release|Any CPU.Build.0 = Release|Any CPU
 		{936397DF-8D11-4244-A493-767D31F9D727}.Release|x64.ActiveCfg = Release|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Debug|x64.Build.0 = Debug|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Release|Any CPU.Build.0 = Release|Any CPU
 		{071CB148-EAA3-4F85-A1F7-52D1B7FDAF82}.Release|x64.ActiveCfg = Release|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Debug|x64.Build.0 = Debug|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{29A8C5E0-8129-40B9-B57B-5B9A8C6D004E}.Release|x64.ActiveCfg = Release|Any CPU
@@ -608,6 +622,30 @@ Global
 		{9DDE0641-6E2D-4CED-9853-8513B2037EAD}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9DDE0641-6E2D-4CED-9853-8513B2037EAD}.Release|x64.ActiveCfg = Release|Any CPU
 		{9DDE0641-6E2D-4CED-9853-8513B2037EAD}.Release|x64.Build.0 = Release|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Debug|x64.Build.0 = Debug|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Release|x64.ActiveCfg = Release|Any CPU
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18}.Release|x64.Build.0 = Release|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Debug|x64.Build.0 = Debug|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Release|x64.ActiveCfg = Release|Any CPU
+		{668AC915-7C11-4EC7-A899-BB49011E529A}.Release|x64.Build.0 = Release|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Debug|x64.Build.0 = Debug|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Release|x64.ActiveCfg = Release|Any CPU
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -664,5 +702,9 @@ Global
 		{7FE01E54-66AA-4850-949D-A5914B9ACBF3} = {01F3CC7E-F996-411E-AFD6-72673A826549}
 		{995116BD-4354-46F0-8BE5-80AE46541DA6} = {01F3CC7E-F996-411E-AFD6-72673A826549}
 		{9DDE0641-6E2D-4CED-9853-8513B2037EAD} = {01F3CC7E-F996-411E-AFD6-72673A826549}
+		{D964FE9E-008A-4EDB-BBD7-8C57185C7A18} = {01F3CC7E-F996-411E-AFD6-72673A826549}
+		{2C188181-1B01-4E77-A83D-F6A2EA855BE9} = {01F3CC7E-F996-411E-AFD6-72673A826549}
+		{668AC915-7C11-4EC7-A899-BB49011E529A} = {2C188181-1B01-4E77-A83D-F6A2EA855BE9}
+		{40FF243D-DF4D-4299-B3CF-C50DC089DBF4} = {2C188181-1B01-4E77-A83D-F6A2EA855BE9}
 	EndGlobalSection
 EndGlobal

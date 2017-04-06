@@ -7,6 +7,7 @@ namespace Orleans.CodeGeneration
     using Orleans.CodeGenerator;
     using Orleans.Runtime;
     using Orleans.Serialization;
+    using Orleans.Runtime.Configuration;
 
     /// <summary>
     /// Generates factory, grain reference, and invoker classes for grain interfaces.
@@ -14,8 +15,6 @@ namespace Orleans.CodeGeneration
     /// </summary>
     public class GrainClientGenerator : MarshalByRefObject
     {
-        private static readonly RoslynCodeGenerator CodeGenerator = new RoslynCodeGenerator();
-
         [Serializable]
         internal class CodeGenOptions
         {
@@ -105,15 +104,17 @@ namespace Orleans.CodeGeneration
                 Directory.CreateDirectory(outputFileDirectory);
             }
 
+            var config = new ClusterConfiguration();
+            var codeGenerator = new RoslynCodeGenerator(new SerializationManager(null, config.Globals, config.Defaults));
+
             // Generate source
             ConsoleText.WriteStatus("Orleans-CodeGen - Generating file {0}", options.OutputFileName);
-
-            SerializationManager.RegisterBuiltInSerializers();
+            
             using (var sourceWriter = new StreamWriter(options.OutputFileName))
             {
                 sourceWriter.WriteLine("#if !EXCLUDE_CODEGEN");
                 DisableWarnings(sourceWriter, suppressCompilerWarnings);
-                sourceWriter.WriteLine(CodeGenerator.GenerateSourceForAssembly(grainAssembly));
+                sourceWriter.WriteLine(codeGenerator.GenerateSourceForAssembly(grainAssembly));
                 RestoreWarnings(sourceWriter, suppressCompilerWarnings);
                 sourceWriter.WriteLine("#endif");
             }
@@ -241,7 +242,7 @@ namespace Orleans.CodeGeneration
             Console.WriteLine("Usage: ClientGenerator.exe /in:<grain assembly filename> /out:<fileName for output file> /r:<reference assemblies>");
             Console.WriteLine("       ClientGenerator.exe @<arguments fileName> - Arguments will be read and processed from this file.");
             Console.WriteLine();
-            Console.WriteLine("Example: ClientGenerator.exe /in:MyGrain.dll /out:C:\\OrleansSample\\MyGrain\\obj\\Debug\\MyGrain.codegen.cs /r:Orleans.dll;..\\MyInterfaces\\bin\\Debug\\MyInterfaces.dll");
+            Console.WriteLine("Example: ClientGenerator.exe /in:MyGrain.dll /out:C:\\OrleansSample\\MyGrain\\obj\\Debug\\MyGrain.orleans.g.cs /r:Orleans.dll;..\\MyInterfaces\\bin\\Debug\\MyInterfaces.dll");
         }
 
         private static void AssertWellFormed(string path, bool mustExist = false)

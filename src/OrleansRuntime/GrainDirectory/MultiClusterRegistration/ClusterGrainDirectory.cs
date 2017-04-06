@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Orleans.GrainDirectory;
 using Orleans.SystemTargetInterfaces;
 using System.Collections.Generic;
+using Orleans.Runtime.MultiClusterNetwork;
 
 namespace Orleans.Runtime.GrainDirectory
 {
@@ -18,29 +19,29 @@ namespace Orleans.Runtime.GrainDirectory
     {
         private readonly LocalGrainDirectory router;
         private readonly string clusterId;
+        private readonly IInternalGrainFactory grainFactory;
         private readonly Logger logger;
+        private readonly IMultiClusterOracle multiClusterOracle;
 
-        public ClusterGrainDirectory(LocalGrainDirectory r, GrainId grainId, string clusterId) : base(grainId, r.MyAddress)
+        public ClusterGrainDirectory(
+            LocalGrainDirectory r,
+            GrainId grainId,
+            string clusterId,
+            IInternalGrainFactory grainFactory,
+            IMultiClusterOracle multiClusterOracle) : base(grainId, r.MyAddress)
         {
             this.router = r;
             this.clusterId = clusterId;
+            this.grainFactory = grainFactory;
             this.logger = r.Logger;
+            this.multiClusterOracle = multiClusterOracle;
         }
-
-        public ClusterGrainDirectory(LocalGrainDirectory r, GrainId grainId, string clusterId, bool lowPriority)
-            : base(grainId, r.MyAddress, lowPriority)
-        {
-            this.router = r;        
-            this.clusterId = clusterId;
-            this.logger = r.Logger;
-        }
-
 
         public async Task<RemoteClusterActivationResponse> ProcessActivationRequest(GrainId grain, string requestClusterId, int hopCount = 0)
         {
             // check if the requesting cluster id is in the current configuration view of this cluster
             // if not, reject the message.
-            var multiClusterConfiguration = Runtime.Silo.CurrentSilo.LocalMultiClusterOracle?.GetMultiClusterConfiguration();
+            var multiClusterConfiguration = this.multiClusterOracle?.GetMultiClusterConfiguration();
             if (multiClusterConfiguration == null || !multiClusterConfiguration.Clusters.Contains(requestClusterId))       
             {
                 logger.Warn(ErrorCode.GlobalSingleInstance_WarningInvalidOrigin, 
@@ -67,7 +68,7 @@ namespace Orleans.Runtime.GrainDirectory
                 if (logger.IsVerbose2)
                     logger.Verbose("GSIP:Rsp {0} Origin={1} forward to {2}", grain.ToString(), requestClusterId, forwardAddress);
 
-                var clusterGrainDir = InsideRuntimeClient.Current.InternalGrainFactory.GetSystemTarget<IClusterGrainDirectory>(Constants.ClusterDirectoryServiceId, forwardAddress);
+                var clusterGrainDir = this.grainFactory.GetSystemTarget<IClusterGrainDirectory>(Constants.ClusterDirectoryServiceId, forwardAddress);
                 return await clusterGrainDir.ProcessActivationRequest(grain, requestClusterId, hopCount + 1);
             }
         }

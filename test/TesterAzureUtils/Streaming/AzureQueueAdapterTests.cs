@@ -11,32 +11,33 @@ using Orleans.Providers.Streams.AzureQueue;
 using Orleans.Providers.Streams.Common;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
-using Orleans.Serialization;
 using Orleans.Streams;
-using Tester;
 using TestExtensions;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace Tester.AzureUtils.Streaming
 {
-    public class AzureQueueAdapterTests : IDisposable
+    [Collection(TestEnvironmentFixture.DefaultCollection)]
+    [TestCategory("Azure"), TestCategory("Streaming")]
+    public class AzureQueueAdapterTests : AzureStorageBasicTests, IDisposable
     {
         private readonly ITestOutputHelper output;
+        private readonly TestEnvironmentFixture fixture;
         private const int NumBatches = 20;
         private const int NumMessagesPerBatch = 20;
         private string deploymentId;
         public static readonly string AZURE_QUEUE_STREAM_PROVIDER_NAME = "AQAdapterTests";
 
         private static readonly SafeRandom Random = new SafeRandom();
-        
-        public AzureQueueAdapterTests(ITestOutputHelper output)
+
+        public AzureQueueAdapterTests(ITestOutputHelper output, TestEnvironmentFixture fixture)
         {
             this.output = output;
+            this.fixture = fixture;
             this.deploymentId = MakeDeploymentId();
             LogManager.Initialize(new NodeConfiguration());
             BufferPool.InitGlobalBufferPool(new MessagingConfiguration(false));
-            SerializationManager.InitializeForTesting();
         }
         
         public void Dispose()
@@ -44,19 +45,19 @@ namespace Tester.AzureUtils.Streaming
             AzureQueueStreamProviderUtils.DeleteAllUsedAzureQueues(AZURE_QUEUE_STREAM_PROVIDER_NAME, deploymentId, TestDefaultConfiguration.DataConnectionString).Wait();
         }
 
-        [Fact, TestCategory("Functional"), TestCategory("Halo"), TestCategory("Azure"), TestCategory("Streaming")]
+        [SkippableFact, TestCategory("Functional"), TestCategory("Halo")]
         public async Task SendAndReceiveFromAzureQueue()
         {
             var properties = new Dictionary<string, string>
                 {
-                    {AzureQueueAdapterFactory.DataConnectionStringPropertyName, TestDefaultConfiguration.DataConnectionString},
-                    {AzureQueueAdapterFactory.DeploymentIdPropertyName, deploymentId},
-                    {AzureQueueAdapterFactory.MessageVisibilityTimeoutPropertyName, "00:00:30" }
+                    {AzureQueueAdapterConstants.DataConnectionStringPropertyName, TestDefaultConfiguration.DataConnectionString},
+                    {AzureQueueAdapterConstants.DeploymentIdPropertyName, deploymentId},
+                    {AzureQueueAdapterConstants.MessageVisibilityTimeoutPropertyName, "00:00:30" }
                 };
             var config = new ProviderConfiguration(properties, "type", "name");
 
-            var adapterFactory = new AzureQueueAdapterFactory();
-            adapterFactory.Init(config, AZURE_QUEUE_STREAM_PROVIDER_NAME, LogManager.GetLogger("AzureQueueAdapter", LoggerType.Application), null);
+            var adapterFactory = new AzureQueueAdapterFactory<AzureQueueDataAdapterV2>();
+            adapterFactory.Init(config, AZURE_QUEUE_STREAM_PROVIDER_NAME, LogManager.GetLogger("AzureQueueAdapter", LoggerType.Application), this.fixture.Services);
             await SendAndReceiveFromQueueAdapter(adapterFactory, config);
         }
 
@@ -95,7 +96,7 @@ namespace Tester.AzureUtils.Streaming
                         {
                             continue;
                         }
-                        foreach (AzureQueueBatchContainer message in messages.Cast<AzureQueueBatchContainer>())
+                        foreach (IBatchContainer message in messages)
                         {
                             streamsPerQueue.AddOrUpdate(queueId,
                                 id => new HashSet<IStreamIdentity> { new StreamIdentity(message.StreamGuid, message.StreamGuid.ToString()) },
@@ -123,7 +124,7 @@ namespace Tester.AzureUtils.Streaming
                 .ToList()
                 .ForEach(streamId =>
                     adapter.QueueMessageBatchAsync(streamId, streamId.ToString(),
-                        events.Take(NumMessagesPerBatch).ToArray(), null, RequestContext.Export()).Wait())));
+                        events.Take(NumMessagesPerBatch).ToArray(), null, RequestContext.Export(this.fixture.SerializationManager)).Wait())));
             await Task.WhenAll(work);
 
             // Make sure we got back everything we sent

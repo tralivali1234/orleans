@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Orleans.GrainDirectory;
-
+using Orleans.Runtime.Configuration;
 
 namespace Orleans.Runtime
 {
@@ -11,7 +12,7 @@ namespace Orleans.Runtime
         SiloAddress SiloAddress { get; }
         DateTime TimeCreated { get; }
         GrainDirectoryEntryStatus RegistrationStatus { get; set; }
-        bool OkToRemove(UnregistrationCause cause);
+        bool OkToRemove(UnregistrationCause cause, GlobalConfiguration config);
     }
 
     internal interface IGrainInfo
@@ -21,8 +22,15 @@ namespace Orleans.Runtime
         bool SingleInstance { get; }
         bool AddActivation(ActivationId act, SiloAddress silo);
         ActivationAddress AddSingleActivation(GrainId grain, ActivationId act, SiloAddress silo, GrainDirectoryEntryStatus registrationStatus);
-        bool RemoveActivation(ActivationId act, UnregistrationCause cause, out IActivationInfo entry, out bool wasRemoved);
-        bool Merge(GrainId grain, IGrainInfo other);
+        bool RemoveActivation(ActivationId act, UnregistrationCause cause, GlobalConfiguration config, out IActivationInfo entry, out bool wasRemoved);
+
+        /// <summary>
+        /// Merges two grain directory infos, returning a map of activations which must be deactivated, grouped by silo.
+        /// </summary>
+        /// <param name="grain"></param>
+        /// <param name="other"></param>
+        /// <returns>A map of activations which must be deactivated, grouped by silo.</returns>
+        Dictionary<SiloAddress, List<ActivationAddress>> Merge(GrainId grain, IGrainInfo other);
         void CacheOrUpdateRemoteClusterRegistration(GrainId grain, ActivationId oldActivation, ActivationId activation, SiloAddress silo);
         bool UpdateClusterRegistrationStatus(ActivationId activationId, GrainDirectoryEntryStatus registrationStatus, GrainDirectoryEntryStatus? compareWith = null);
     }

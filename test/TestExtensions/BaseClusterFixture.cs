@@ -1,13 +1,14 @@
 ﻿using System;
+using System.Runtime.ExceptionServices;
 using Orleans;
-using Orleans.Serialization;
+using Orleans.Runtime;
 using Orleans.TestingHost;
 
 namespace TestExtensions
 {
     public abstract class BaseTestClusterFixture : IDisposable
     {
-        private static int defaultsAreInitialized = 0;
+        private ExceptionDispatchInfo preconditionsException;
 
         static BaseTestClusterFixture()
         {
@@ -16,23 +17,45 @@ namespace TestExtensions
 
         protected BaseTestClusterFixture()
         {
-            GrainClient.Uninitialize();
-            SerializationTestEnvironment.Initialize();
-            var testCluster = CreateTestCluster();
-            if (testCluster.Primary == null)
+            try
             {
-                testCluster.Deploy();
+                CheckPreconditionsOrThrow();
+            }
+            catch (Exception ex)
+            {
+                preconditionsException = ExceptionDispatchInfo.Capture(ex);
+                return;
+            }
+
+            var testCluster = CreateTestCluster();
+            if (testCluster?.Primary == null)
+            {
+                testCluster?.Deploy();
             }
             this.HostedCluster = testCluster;
         }
 
+        public void EnsurePreconditionsMet()
+        {
+            preconditionsException?.Throw();
+        }
+
+        protected virtual void CheckPreconditionsOrThrow() { }
+
+
         protected abstract TestCluster CreateTestCluster();
 
-        public TestCluster HostedCluster { get; private set; }
+        public TestCluster HostedCluster { get; }
+
+        public IGrainFactory GrainFactory => this.HostedCluster?.GrainFactory;
+
+        public IClusterClient Client => this.HostedCluster?.Client;
+
+        public Logger Logger => this.Client?.Logger;
 
         public virtual void Dispose()
         {
-            this.HostedCluster.StopAllSilos();
+            this.HostedCluster?.StopAllSilos();
         }
     }
 }

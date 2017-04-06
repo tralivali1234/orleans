@@ -24,14 +24,14 @@ namespace DefaultCluster.Tests.General
             this.output = output;
         }
 
-        [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("StatelessWorker")]
+        [Fact, TestCategory("SlowBVT"), TestCategory("Functional"), TestCategory("StatelessWorker")]
         public async Task StatelessWorkerActivationsPerSiloDoNotExceedMaxLocalWorkersCount()
         {
             var gatewaysCount = HostedCluster.ClientConfiguration.Gateways.Count;
             // do extra calls to trigger activation of ExpectedMaxLocalActivations local activations
             int numberOfCalls = ExpectedMaxLocalActivations * 3 * gatewaysCount; 
 
-            IStatelessWorkerGrain grain = GrainClient.GrainFactory.GetGrain<IStatelessWorkerGrain>(GetRandomGrainId());
+            IStatelessWorkerGrain grain = this.GrainFactory.GetGrain<IStatelessWorkerGrain>(GetRandomGrainId());
             List<Task> promises = new List<Task>();
 
             // warmup
@@ -94,7 +94,7 @@ namespace DefaultCluster.Tests.General
             // do extra calls to trigger activation of ExpectedMaxLocalActivations local activations
             int numberOfCalls = ExpectedMaxLocalActivations * 3 * gatewaysCount;
 
-            IStatelessWorkerGrain grain = GrainClient.GrainFactory.GetGrain<IStatelessWorkerGrain>(GetRandomGrainId());
+            IStatelessWorkerGrain grain = this.GrainFactory.GetGrain<IStatelessWorkerGrain>(GetRandomGrainId());
             List<Task> promises = new List<Task>();
             
             for (int i = 0; i < numberOfCalls; i++)

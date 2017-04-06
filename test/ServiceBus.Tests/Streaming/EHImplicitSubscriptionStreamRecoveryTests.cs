@@ -22,8 +22,10 @@ using Xunit;
 namespace ServiceBus.Tests.StreamingTests
 {
     [TestCategory("EventHub"), TestCategory("Streaming")]
+    [Collection(TestEnvironmentFixture.DefaultCollection)]
     public class EHImplicitSubscriptionStreamRecoveryTests : OrleansTestingBase, IClassFixture<EHImplicitSubscriptionStreamRecoveryTests.Fixture>
     {
+        private readonly Fixture fixture;
         private const string StreamProviderName = GeneratedStreamTestConstants.StreamProviderName;
         private const string EHPath = "ehorleanstest";
         private const string EHConsumerGroup = "orleansnightly";
@@ -44,7 +46,7 @@ namespace ServiceBus.Tests.StreamingTests
 
         private readonly ImplicitSubscritionRecoverableStreamTestRunner runner;
 
-        private class Fixture : BaseTestClusterFixture
+        public class Fixture : BaseTestClusterFixture
         {
             protected override TestCluster CreateTestCluster()
             {
@@ -83,28 +85,29 @@ namespace ServiceBus.Tests.StreamingTests
             }
         }
 
-        public EHImplicitSubscriptionStreamRecoveryTests()
+        public EHImplicitSubscriptionStreamRecoveryTests(Fixture fixture)
         {
-            runner = new ImplicitSubscritionRecoverableStreamTestRunner(GrainClient.GrainFactory, StreamProviderName);
+            this.fixture = fixture;
+            this.runner = new ImplicitSubscritionRecoverableStreamTestRunner(this.fixture.GrainFactory, StreamProviderName);
         }
 
         [Fact]
         public async Task Recoverable100EventStreamsWithTransientErrorsTest()
         {
-            logger.Info("************************ EHRecoverable100EventStreamsWithTransientErrorsTest *********************************");
+            this.fixture.Logger.Info("************************ EHRecoverable100EventStreamsWithTransientErrorsTest *********************************");
             await runner.Recoverable100EventStreamsWithTransientErrors(GenerateEvents, ImplicitSubscription_TransientError_RecoverableStream_CollectorGrain.StreamNamespace, 4, 100);
         }
 
         [Fact]
         public async Task Recoverable100EventStreamsWith1NonTransientErrorTest()
         {
-            logger.Info("************************ EHRecoverable100EventStreamsWith1NonTransientErrorTest *********************************");
+            this.fixture.Logger.Info("************************ EHRecoverable100EventStreamsWith1NonTransientErrorTest *********************************");
             await runner.Recoverable100EventStreamsWith1NonTransientError(GenerateEvents, ImplicitSubscription_NonTransientError_RecoverableStream_CollectorGrain.StreamNamespace, 4, 100);
         }
 
         private async Task GenerateEvents(string streamNamespace, int streamCount, int eventsInStream)
         {
-            IStreamProvider streamProvider = GrainClient.GetStreamProvider(StreamProviderName);
+            IStreamProvider streamProvider = (IStreamProvider)this.fixture.HostedCluster.StreamProviderManager.GetProvider(StreamProviderName);
             IAsyncStream<GeneratedEvent>[] producers =
                 Enumerable.Range(0, streamCount)
                     .Select(i => streamProvider.GetStream<GeneratedEvent>(Guid.NewGuid(), streamNamespace))

@@ -18,10 +18,9 @@ namespace DefaultCluster.Tests
     public class ErrorGrainTest : HostedTestClusterEnsureDefaultStarted
     {
         private static readonly TimeSpan timeout = TimeSpan.FromSeconds(10);
-        private readonly Logger Logger = LogManager.GetLogger("AssemblyLoaderTests", Orleans.Runtime.LoggerType.Application);
         private readonly ITestOutputHelper output;
 
-        public ErrorGrainTest(ITestOutputHelper output)
+        public ErrorGrainTest(ITestOutputHelper output, DefaultClusterFixture fixture) : base(fixture)
         {
             this.output = output;
         }
@@ -30,7 +29,7 @@ namespace DefaultCluster.Tests
         public async Task ErrorGrain_GetGrain()
         {
             var grainFullName = typeof(ErrorGrain).FullName;
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
             int ignored = await grain.GetA();
         }
 
@@ -58,7 +57,7 @@ namespace DefaultCluster.Tests
         public void ErrorHandlingGrainError1()
         {
             var grainFullName = typeof(ErrorGrain).FullName;
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
 
             Task<int> intPromise = grain.GetAxBError();
             try
@@ -85,26 +84,23 @@ namespace DefaultCluster.Tests
             Assert.True(intPromise.Status == TaskStatus.Faulted);
         }
 
-
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("ErrorHandling")]
         // check that premature wait finishes on time with false.
         public void ErrorHandlingTimedMethod()
         {
             var grainFullName = typeof(ErrorGrain).FullName;
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
 
             Task promise = grain.LongMethod(2000);
 
             // there is a race in the test here. If run in debugger, the invocation can actually finish OK
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-            bool finished = promise.Wait(TimeSpan.FromMilliseconds(1000));
-            stopwatch.Stop();
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            Assert.False(promise.Wait(1000), "The task shouldn't have completed yet.");
 
             // these asserts depend on timing issues and will be wrong for the sync version of OrleansTask
-            Assert.True(!finished);
-            Assert.True(stopwatch.ElapsedMilliseconds >= 900, "Waited less than 900ms"); // check that we waited at least 0.9 second
-            Assert.True(stopwatch.ElapsedMilliseconds <= 1100, "Waited longer than 1100ms");
+            Assert.True(stopwatch.ElapsedMilliseconds >= 900, $"Waited less than 900ms: ({stopwatch.ElapsedMilliseconds}ms)"); // check that we waited at least 0.9 second
+            Assert.True(stopwatch.ElapsedMilliseconds <= 1300, $"Waited longer than 1300ms: ({stopwatch.ElapsedMilliseconds}ms)");
 
             promise.Wait(); // just wait for the server side grain invocation to finish
             
@@ -116,36 +112,28 @@ namespace DefaultCluster.Tests
         public void ErrorHandlingTimedMethodWithError()
         {
             var grainFullName = typeof(ErrorGrain).FullName;
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
 
             Task promise = grain.LongMethodWithError(2000);
 
             // there is a race in the test here. If run in debugger, the invocation can actually finish OK
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             Assert.False(promise.Wait(1000), "The task shouldn't have completed yet.");
 
             stopwatch.Stop();
-            Assert.True(stopwatch.ElapsedMilliseconds >= 900, "Waited less than 900ms"); // check that we waited at least 0.9 second
-            Assert.True(stopwatch.ElapsedMilliseconds <= 1100, "Waited longer than 1100ms");
+            Assert.True(stopwatch.ElapsedMilliseconds >= 900, $"Waited less than 900ms: ({stopwatch.ElapsedMilliseconds}ms)"); // check that we waited at least 0.9 second
+            Assert.True(stopwatch.ElapsedMilliseconds <= 1300, $"Waited longer than 1300ms: ({stopwatch.ElapsedMilliseconds}ms)");
 
-            try
-            {
-                promise.Wait();
-                Assert.True(false, "Should have thrown");
-            }
-            catch (Exception)
-            {
-            }
+            Assert.ThrowsAsync<Exception>(() => promise).Wait();
 
             Assert.True(promise.Status == TaskStatus.Faulted);
         }
 
         [Fact, TestCategory("Functional"), TestCategory("ErrorHandling"), TestCategory("Stress")]
-        public void StressHandlingMultipleDelayedRequests()
+        public async Task StressHandlingMultipleDelayedRequests()
         {
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId());
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId());
             bool once = true;
             List<Task> tasks = new List<Task>();
             for (int i = 0; i < 500; i++)
@@ -159,8 +147,7 @@ namespace DefaultCluster.Tests
                 }
 
             }
-            Task.WhenAll(tasks).Wait();
-            Logger.Info(1, "DONE.");
+            await Task.WhenAll(tasks).WithTimeout(TimeSpan.FromSeconds(15));
         }
 
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("ErrorHandling"), TestCategory("GrainReference")]
@@ -168,9 +155,9 @@ namespace DefaultCluster.Tests
         {
             var grainFullName = typeof(ErrorGrain).FullName;
             List<IErrorGrain> list = new List<IErrorGrain>();
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
-            list.Add(GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName));
-            list.Add(GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName));
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            list.Add(this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName));
+            list.Add(this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName));
             bool ok = grain.AddChildren(list).Wait(timeout);
             if (!ok) throw new TimeoutException();
         }
@@ -179,7 +166,7 @@ namespace DefaultCluster.Tests
         public async Task AC_DelayedExecutor_2()
         {
             var grainFullName = typeof(ErrorGrain).FullName;
-            IErrorGrain grain = GrainClient.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
+            IErrorGrain grain = this.GrainFactory.GetGrain<IErrorGrain>(GetRandomGrainId(), grainFullName);
             Task<bool> promise = grain.ExecuteDelayed(TimeSpan.FromMilliseconds(2000));
             bool result = await promise;
             Assert.Equal(true, result);
@@ -188,7 +175,7 @@ namespace DefaultCluster.Tests
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("SimpleGrain")]
         public void SimpleGrain_AsyncMethods()
         {
-            ISimpleGrainWithAsyncMethods grain = GrainClient.GrainFactory.GetGrain<ISimpleGrainWithAsyncMethods>(GetRandomGrainId());
+            ISimpleGrainWithAsyncMethods grain = this.GrainFactory.GetGrain<ISimpleGrainWithAsyncMethods>(GetRandomGrainId());
             Task setPromise = grain.SetA_Async(10);
             setPromise.Wait();
 
@@ -202,7 +189,7 @@ namespace DefaultCluster.Tests
         [Fact, TestCategory("BVT"), TestCategory("Functional"), TestCategory("SimpleGrain")]
         public void SimpleGrain_PromiseForward()
         {
-            ISimpleGrain forwardGrain = GrainClient.GrainFactory.GetGrain<IPromiseForwardGrain>(GetRandomGrainId());
+            ISimpleGrain forwardGrain = this.GrainFactory.GetGrain<IPromiseForwardGrain>(GetRandomGrainId());
             Task<int> promise = forwardGrain.GetAxB(5, 6);
             int result = promise.Result;
             Assert.Equal(30, result);
@@ -240,7 +227,7 @@ namespace DefaultCluster.Tests
             {
                 guid = Guid.Parse(string.Format("{0:X8}-0000-0000-0000-000000000000", n));
             }
-            IEchoGrain grain = GrainClient.GrainFactory.GetGrain<IEchoGrain>(guid);
+            IEchoGrain grain = this.GrainFactory.GetGrain<IEchoGrain>(guid);
             GrainId grainId = ((GrainReference)grain.AsReference<IEchoGrain>()).GrainId;
             output.WriteLine("Guid = {0}, Guid.HashCode = x{1:X8}, GrainId.HashCode = x{2:X8}, GrainId.UniformHashCode = x{3:X8}", guid, guid.GetHashCode(), grainId.GetHashCode(), grainId.GetUniformHashCode());
         }

@@ -1,7 +1,11 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using Orleans.Runtime;
+using Orleans.Serialization;
 using Orleans.Streams;
+using Orleans.Streams.Core;
+using Orleans.Streams.Providers;
 
 namespace Orleans.Providers.Streams.Common
 {
@@ -32,7 +36,7 @@ namespace Orleans.Providers.Streams.Common
     /// Persistent stream provider that uses an adapter for persistence
     /// </summary>
     /// <typeparam name="TAdapterFactory"></typeparam>
-    public class PersistentStreamProvider<TAdapterFactory> : IInternalStreamProvider, IControllable
+    public class PersistentStreamProvider<TAdapterFactory> : IInternalStreamProvider, IControllable, IStreamSubscriptionManagerRetriever
         where TAdapterFactory : IQueueAdapterFactory, new()
     {
         private Logger                  logger;
@@ -44,16 +48,20 @@ namespace Orleans.Providers.Streams.Common
         internal const string StartupStatePropertyName = "StartupState";
         internal const PersistentStreamProviderState StartupStateDefaultValue = PersistentStreamProviderState.AgentsStarted;
         private PersistentStreamProviderState startupState;
-        private ProviderStateManager stateManager = new ProviderStateManager();
-
+        private readonly ProviderStateManager stateManager = new ProviderStateManager();
+        private SerializationManager serializationManager;
+        private IRuntimeClient runtimeClient;
+        private IStreamSubscriptionManager streamSubscriptionManager;
+        [NonSerialized]
+        private readonly AsyncLock bindExtLock = new AsyncLock();
         public string Name { get; private set; }
 
         public bool IsRewindable { get { return queueAdapter.IsRewindable; } }
-
+        
         // this is a workaround until an IServiceProvider instance is used in the Orleans client
         private class GrainFactoryServiceProvider : IServiceProvider
         {
-            private IStreamProviderRuntime providerRuntime;
+            private readonly IStreamProviderRuntime providerRuntime;
             public GrainFactoryServiceProvider(IStreamProviderRuntime providerRuntime)
             {
                 this.providerRuntime = providerRuntime;
@@ -91,6 +99,14 @@ namespace Orleans.Providers.Streams.Common
             adapterFactory.Init(config, Name, logger, new GrainFactoryServiceProvider(providerRuntime));
             queueAdapter = await adapterFactory.CreateAdapter();
             myConfig = new PersistentStreamProviderConfig(config);
+            this.serializationManager = this.providerRuntime.ServiceProvider.GetRequiredService<SerializationManager>();
+			this.runtimeClient = this.providerRuntime.ServiceProvider.GetRequiredService<IRuntimeClient>();
+            if (this.myConfig.PubSubType == StreamPubSubType.ExplicitGrainBasedAndImplicit 
+                || this.myConfig.PubSubType == StreamPubSubType.ExplicitGrainBasedOnly)
+            {
+                this.streamSubscriptionManager = this.providerRuntime.ServiceProvider
+                    .GetService<IStreamSubscriptionManagerAdmin>().GetStreamSubscriptionManager(StreamSubscriptionManagerType.ExplicitSubscribeOnly);
+            }
             string startup;
             if (config.Properties.TryGetValue(StartupStatePropertyName, out startup))
             {
@@ -100,7 +116,6 @@ namespace Orleans.Providers.Streams.Common
             }
             else
                 startupState = StartupStateDefaultValue;
-
             logger.Info("Initialized PersistentStreamProvider<{0}> with name {1}, Adapter {2} and config {3}, {4} = {5}.",
                 typeof(TAdapterFactory).Name, 
                 Name, 
@@ -129,6 +144,17 @@ namespace Orleans.Providers.Streams.Common
             stateManager.CommitState();
         }
 
+        public async Task SetOnSubscriptionChangeAction<T>(Func<StreamSubscriptionHandle<T>, Task> onAdd)
+        {
+            var consumerExtension = await StreamProviderUtils.BindExtensionLazy(providerRuntime, logger, IsRewindable, bindExtLock);
+            await consumerExtension.SetOnSubscriptionChangeAction<T>(onAdd);
+        }
+
+        public IStreamSubscriptionManager GetStreamSubscriptionManager()
+        {
+            return this.streamSubscriptionManager;
+        }
+
         public async Task Close()
         {
             if (!stateManager.PresetState(ProviderState.Closed)) return;
@@ -144,7 +170,7 @@ namespace Orleans.Providers.Streams.Common
         {
             var streamId = StreamId.GetStreamId(id, Name, streamNamespace);
             return providerRuntime.GetStreamDirectory().GetOrAddStream<T>(
-                streamId, () => new StreamImpl<T>(streamId, this, IsRewindable));
+                streamId, () => new StreamImpl<T>(streamId, this, IsRewindable, this.runtimeClient));
         }
 
         IInternalAsyncBatchObserver<T> IInternalStreamProvider.GetProducerInterface<T>(IAsyncStream<T> stream)
@@ -153,7 +179,7 @@ namespace Orleans.Providers.Streams.Common
             {
                 throw new InvalidOperationException($"Stream provider {queueAdapter.Name} is ReadOnly.");
             }
-            return new PersistentStreamProducer<T>((StreamImpl<T>)stream, providerRuntime, queueAdapter, IsRewindable);
+            return new PersistentStreamProducer<T>((StreamImpl<T>)stream, providerRuntime, queueAdapter, IsRewindable, this.serializationManager);
         }
 
         IInternalAsyncObservable<T> IInternalStreamProvider.GetConsumerInterface<T>(IAsyncStream<T> streamId)

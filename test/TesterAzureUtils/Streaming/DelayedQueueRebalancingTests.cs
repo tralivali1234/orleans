@@ -1,8 +1,6 @@
-
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Orleans;
 using Orleans.Providers.Streams.AzureQueue;
 using Orleans.Providers.Streams.Common;
 using Orleans.Runtime;
@@ -15,15 +13,20 @@ using Xunit;
 
 namespace Tester.AzureUtils.Streaming
 {
+    [TestCategory("Streaming")]
     public class DelayedQueueRebalancingTests : TestClusterPerTest
     {
         private const string adapterName = StreamTestsConstants.AZURE_QUEUE_STREAM_PROVIDER_NAME;
+#pragma warning disable 618
         private readonly string adapterType = typeof(AzureQueueStreamProvider).FullName;
+#pragma warning restore 618
         private static readonly TimeSpan SILO_IMMATURE_PERIOD = TimeSpan.FromSeconds(40); // matches the config
         private static readonly TimeSpan LEEWAY = TimeSpan.FromSeconds(10);
 
         public override TestCluster CreateTestCluster()
         {
+            TestUtils.CheckForAzureStorage();
+
             // Define a cluster of 4, but deploy ony 2 to start.
             var options = new TestClusterOptions(4);
 
@@ -41,7 +44,7 @@ namespace Tester.AzureUtils.Streaming
             return host;
         }
 
-        [Fact, TestCategory("Functional"), TestCategory("Streaming")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task DelayedQueueRebalancingTests_1()
         {
             await ValidateAgentsState(2, 2, "1");
@@ -51,7 +54,7 @@ namespace Tester.AzureUtils.Streaming
             await ValidateAgentsState(2, 4, "2");
         }
 
-        [Fact, TestCategory("Functional"), TestCategory("Streaming")]
+        [SkippableFact, TestCategory("Functional")]
         public async Task DelayedQueueRebalancingTests_2()
         {
             await ValidateAgentsState(2, 2, "1");
@@ -68,7 +71,7 @@ namespace Tester.AzureUtils.Streaming
 
         private async Task ValidateAgentsState(int numExpectedSilos, int numExpectedAgentsPerSilo, string callContext)
         {
-            var mgmt = GrainClient.GrainFactory.GetGrain<IManagementGrain>(0);
+            var mgmt = this.GrainFactory.GetGrain<IManagementGrain>(0);
 
             object[] results = await mgmt.SendControlCommandToProvider(adapterType, adapterName, (int)PersistentStreamProviderCommand.GetNumberRunningAgents);
             Assert.Equal(numExpectedSilos, results.Length);

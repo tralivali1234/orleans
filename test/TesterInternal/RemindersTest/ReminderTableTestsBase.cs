@@ -1,27 +1,31 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
+using TestExtensions;
 using UnitTests.MembershipTests;
-using UnitTests.StorageTests;
 using Xunit;
 
 namespace UnitTests.RemindersTest
 {
+    [Collection(TestEnvironmentFixture.DefaultCollection)]
     public abstract class ReminderTableTestsBase : IDisposable, IClassFixture<ConnectionStringFixture>
     {
+        protected readonly TestEnvironmentFixture ClusterFixture;
         private readonly Logger logger;
 
         private readonly IReminderTable remindersTable;
 
         protected const string testDatabaseName = "OrleansReminderTest";//for relational storage
         
-        protected ReminderTableTestsBase(ConnectionStringFixture fixture)
+        protected ReminderTableTestsBase(ConnectionStringFixture fixture, TestEnvironmentFixture clusterFixture)
         {
+            this.ClusterFixture = clusterFixture;
             LogManager.Initialize(new NodeConfiguration());
             
             logger = LogManager.GetLogger(GetType().Name, LoggerType.Application);
@@ -30,11 +34,7 @@ namespace UnitTests.RemindersTest
 
             logger.Info("DeploymentId={0}", deploymentId);
 
-            lock (fixture.SyncRoot)
-            {
-                if (fixture.ConnectionString == null)
-                    fixture.ConnectionString = GetConnectionString();
-            }
+            fixture.InitializeConnectionStringAccessor(GetConnectionString);
 
             var globalConfiguration = new GlobalConfiguration
             {
@@ -58,7 +58,7 @@ namespace UnitTests.RemindersTest
         }
 
         protected abstract IReminderTable CreateRemindersTable();
-        protected abstract string GetConnectionString();
+        protected abstract Task<string> GetConnectionString();
 
         protected virtual string GetAdoInvariant()
         {
@@ -153,10 +153,10 @@ namespace UnitTests.RemindersTest
             };
         }
 
-        private static GrainReference MakeTestGrainReference()
+        private GrainReference MakeTestGrainReference()
         {
             GrainId regularGrainId = GrainId.GetGrainIdForTesting(Guid.NewGuid());
-            GrainReference grainRef = GrainReference.FromGrainId(regularGrainId);
+            GrainReference grainRef = this.ClusterFixture.InternalGrainFactory.GetGrain(regularGrainId);
             return grainRef;
         }
     }
