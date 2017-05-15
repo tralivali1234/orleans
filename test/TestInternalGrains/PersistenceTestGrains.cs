@@ -67,7 +67,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<bool> CheckStateInit()
@@ -90,7 +90,7 @@ namespace UnitTests.Grains
 
         public Task DoSomething()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task DoWrite(int val)
@@ -128,7 +128,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -147,6 +147,8 @@ namespace UnitTests.Grains
             await ReadStateAsync();
             return State.Field1;
         }
+
+        public Task<string> GetActivationId() => Task.FromResult(this.Data.ActivationId.ToString());
     }
 
     [Orleans.Providers.StorageProvider(ProviderName = "ErrorInjector")]
@@ -157,7 +159,7 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             this.serializationManager = this.ServiceProvider.GetRequiredService<SerializationManager>();
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -205,7 +207,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -247,7 +249,7 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             GetLogger().Warn(1, "OnActivateAsync");
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task DoSomething()
@@ -264,13 +266,13 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             GetLogger().Info(1, "OnActivateAsync");
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task DoSomething()
         {
             GetLogger().Info(1, "DoSomething");
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
     }
 
@@ -280,7 +282,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -312,7 +314,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<T> GetValue()
@@ -344,7 +346,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -383,7 +385,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -403,6 +405,8 @@ namespace UnitTests.Grains
             return State.Field1;
         }
 
+        public Task<string> GetActivationId() => Task.FromResult(this.Data.ActivationId.ToString());
+
         public Task DoDelete()
         {
             return ClearStateAsync(); // Automatically marks this grain as DeactivateOnIdle 
@@ -415,7 +419,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<T> GetValue()
@@ -447,7 +451,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -487,7 +491,7 @@ namespace UnitTests.Grains
     {
         public override Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<int> GetValue()
@@ -578,7 +582,7 @@ namespace UnitTests.Grains
             else
                 throw new Exception("Already a friend.");
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task<List<IUser>> GetFriends()
@@ -662,7 +666,7 @@ namespace UnitTests.Grains
         {
             logger.Info("Setup");
             _other = other;
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public async Task SetOne(int val)
@@ -859,7 +863,7 @@ namespace UnitTests.Grains
             if (level > 0)
             {
                 Log("SetOne {0}-{1}_1. Before await Task.Done.", iter, level);
-                await TaskDone.Done;
+                await Task.CompletedTask;
                 Log("SetOne {0}-{1}_2. After await Task.Done.", iter, level);
                 CheckRuntimeEnvironment(String.Format("SetOne {0}-{1}_3", iter, level));
                 Log("SetOne {0}-{1}_4. Before await Task.Delay.", iter, level);
@@ -986,7 +990,7 @@ namespace UnitTests.Grains
         {
             logger.Info("SetOne");
             State.One = val;
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
     }
 
@@ -1068,7 +1072,7 @@ namespace UnitTests.Grains
             //TestSerializeFuncPtr("Instance Func In Grain Class", instanceFuncInGrainClass);
             //TestSerializeFuncPtr("Func Lambda - Instance field", instanceFilterFunc);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task Test_Serialize_Predicate()
@@ -1085,7 +1089,7 @@ namespace UnitTests.Grains
             // Fails
             //TestSerializePredicate("Predicate Lambda - Instance field", instancePredicate);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task Test_Serialize_Predicate_Class()
@@ -1095,7 +1099,7 @@ namespace UnitTests.Grains
             // Works OK
             TestSerializePredicate("Predicate Class Instance", pred.FilterFunc);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         public Task Test_Serialize_Predicate_Class_Param(IMyPredicate pred)
@@ -1103,7 +1107,7 @@ namespace UnitTests.Grains
             // Works OK
             TestSerializePredicate("Predicate Class Instance passed as param", pred.FilterFunc);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         // Utility methods

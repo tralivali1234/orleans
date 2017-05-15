@@ -81,6 +81,11 @@ namespace Orleans
             get { return Runtime?.SiloIdentity ?? string.Empty; }
         }
 
+        internal SiloAddress SiloAddress
+        {
+            get { return Runtime?.SiloAddress ?? SiloAddress.Zero; }
+        }
+
         /// <summary>
         /// Registers a timer to send periodic callbacks to this grain.
         /// </summary>
@@ -220,7 +225,7 @@ namespace Orleans
         /// </summary>
         public virtual Task OnActivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -228,7 +233,7 @@ namespace Orleans
         /// </summary>
         public virtual Task OnDeactivateAsync()
         {
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         /// <summary>

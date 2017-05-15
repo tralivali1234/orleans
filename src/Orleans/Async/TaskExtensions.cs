@@ -289,7 +289,7 @@ namespace Orleans
             try
             {
                 action();
-                return TaskDone.Done;
+                return Task.CompletedTask;
             }
             catch (Exception exc)
             {
@@ -359,17 +359,10 @@ namespace Orleans
     /// </summary>
     public static class TaskDone
     {
-        private static readonly Task<int> doneConstant = Task.FromResult(1);
-
         /// <summary>
         /// A special 'Done' Task that is already in the RunToCompletion state
         /// </summary>
-        public static Task Done
-        {
-            get
-            {
-                return doneConstant;
-            }
-        }
+        [Obsolete("Use Task.CompletedTask")]
+        public static Task Done => Task.CompletedTask;
     }
 }

@@ -109,8 +109,8 @@ namespace Tests.GeoClusterTests
                 // Create two clusters, each with a single silo.
                 cluster0 = "cluster0";
                 cluster1 = "cluster1";
-                NewGeoCluster(globalserviceid, cluster0, largesetup ? 3 : 1, configurationcustomizer);
-                NewGeoCluster(globalserviceid, cluster1, largesetup ? 4 : 1, configurationcustomizer);
+                NewGeoCluster(globalserviceid, cluster0, (short)(largesetup ? 3 : 1), configurationcustomizer);
+                NewGeoCluster(globalserviceid, cluster1, (short)(largesetup ? 4 : 1), configurationcustomizer);
 
                 if (!largesetup)
                 {
@@ -185,7 +185,7 @@ namespace Tests.GeoClusterTests
             Assert.Equal(requested0, base_requested0);
             Assert.Equal(requested1, base_requested1);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         #endregion
@@ -280,7 +280,7 @@ namespace Tests.GeoClusterTests
 
             ValidateClusterRaceResults(results, grains);
 
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         private volatile int threadsDone;
@@ -508,7 +508,7 @@ namespace Tests.GeoClusterTests
         private List<GrainId> GetGrainsInClusterWithStatus(string clusterId, GrainDirectoryEntryStatus? status = null)
         {
             List<GrainId> grains = new List<GrainId>();
-            var silos = Clusters[clusterId].Silos;
+            var silos = Clusters[clusterId].Cluster.GetActiveSilos();
             int totalSoFar = 0;
             foreach (var silo in silos)
             {

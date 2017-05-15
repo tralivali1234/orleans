@@ -39,7 +39,12 @@ using Orleans.Storage;
 using Orleans.Streams;
 using Orleans.Timers;
 using Orleans.MultiCluster;
+using Orleans.Runtime.Versions;
+using Orleans.Runtime.Versions.Compatibility;
 using Orleans.Streams.Core;
+using Orleans.Versions.Compatibility;
+using Orleans.Runtime.Versions.Selector;
+using Orleans.Versions.Selector;
 
 namespace Orleans.Runtime
 {
@@ -208,6 +213,7 @@ namespace Orleans.Runtime
             services.AddSingleton(initializationParams.GlobalConfig);
             services.AddTransient(sp => initializationParams.NodeConfig);
             services.AddTransient<Func<NodeConfiguration>>(sp => () => initializationParams.NodeConfig);
+            services.AddTransient(typeof(IStreamSubscriptionObserver<>),typeof(StreamSubscriptionObserverProxy<>));
             services.AddFromExisting<IMessagingConfiguration, GlobalConfiguration>();
             services.AddFromExisting<ITraceConfiguration, NodeConfiguration>();
             services.AddSingleton<SerializationManager>();
@@ -271,11 +277,24 @@ namespace Orleans.Runtime
             // Placement
             services.AddSingleton<PlacementDirectorsManager>();
             services.AddSingleton<IPlacementDirector<RandomPlacement>, RandomPlacementDirector>();
+            services.AddSingleton<IActivationSelector<RandomPlacement>, RandomPlacementDirector>();
             services.AddSingleton<IPlacementDirector<PreferLocalPlacement>, PreferLocalPlacementDirector>();
             services.AddSingleton<IPlacementDirector<StatelessWorkerPlacement>, StatelessWorkerDirector>();
+            services.AddSingleton<IActivationSelector<StatelessWorkerPlacement>, StatelessWorkerDirector>();
             services.AddSingleton<IPlacementDirector<ActivationCountBasedPlacement>, ActivationCountPlacementDirector>();
+            services.AddSingleton<IPlacementDirector<HashBasedPlacement>, HashBasedPlacementDirector>();
             services.AddSingleton<DefaultPlacementStrategy>();
             services.AddSingleton<ClientObserversPlacementDirector>();
+
+            // Versions
+            services.AddSingleton<VersionSelectorManager>();
+            services.AddSingleton<IVersionSelector<MinimumVersion>, MinimumVersionSelector>();
+            services.AddSingleton<IVersionSelector<LatestVersion>, LatestVersionSelector>();
+            services.AddSingleton<IVersionSelector<AllCompatibleVersions>, AllCompatibleVersionsSelector>();
+            services.AddSingleton<CompatibilityDirectorManager>();
+            services.AddSingleton<ICompatibilityDirector<BackwardCompatible>, BackwardCompatilityDirector>();
+            services.AddSingleton<ICompatibilityDirector<AllVersionsCompatible>, AllVersionsCompatibilityDirector>();
+            services.AddSingleton<CachedVersionSelectorManager>();
 
             services.AddSingleton<Func<IGrainRuntime>>(sp => () => sp.GetRequiredService<IGrainRuntime>());
             services.AddSingleton<GrainCreator>();
@@ -410,7 +429,8 @@ namespace Orleans.Runtime
 
             this.RegisterSystemTarget(this.Services.GetRequiredService<ClientObserverRegistrar>());
             var implicitStreamSubscriberTable = Services.GetRequiredService<ImplicitStreamSubscriberTable>();
-            typeManager = new TypeManager(SiloAddress, this.grainTypeManager, membershipOracle, LocalScheduler, GlobalConfig.TypeMapRefreshInterval, implicitStreamSubscriberTable, this.grainFactory);
+            var versionDirectorManager = this.Services.GetRequiredService<CachedVersionSelectorManager>();
+            typeManager = new TypeManager(SiloAddress, this.grainTypeManager, membershipOracle, LocalScheduler, GlobalConfig.TypeMapRefreshInterval, implicitStreamSubscriberTable, this.grainFactory, versionDirectorManager);
             this.RegisterSystemTarget(typeManager);
 
             logger.Verbose("Creating {0} System Target", "MembershipOracle");

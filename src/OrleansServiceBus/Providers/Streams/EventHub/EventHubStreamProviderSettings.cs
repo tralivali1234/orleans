@@ -17,6 +17,37 @@ namespace Orleans.ServiceBus.Providers
         public string StreamProviderName { get; }
 
         /// <summary>
+        /// SlowConsumingMonitorFlowControlThresholdName
+        /// </summary>
+        public const string SlowConsumingMonitorFlowControlThresholdName = nameof(SlowConsumingMonitorFlowControlThreshold);
+
+        /// <summary>
+        /// SlowConsumingPressureMonitorConfig
+        /// </summary>
+        public double? SlowConsumingMonitorFlowControlThreshold { get; set; }
+
+        /// <summary>
+        /// SlowConsumingMonitorPressureWindowSizeName
+        /// </summary>
+        public const string SlowConsumingMonitorPressureWindowSizeName = nameof(SlowConsumingMonitorPressureWindowSize);
+
+        /// <summary>
+        /// SlowConsumingMonitorPressureWindowSize
+        /// </summary>
+        public TimeSpan? SlowConsumingMonitorPressureWindowSize { get; set; }
+
+        /// <summary>
+        /// AveragingCachePressureMonitorFlowControlThresholdName
+        /// </summary>
+        public const string AveragingCachePressureMonitorFlowControlThresholdName = nameof(AveragingCachePressureMonitorFlowControlThreshold);
+
+        /// <summary>
+        /// AveragingCachePressureMonitorFlowControlThreshold, AveragingCachePressureMonitor is turn on by default. 
+        /// User can turn it off by setting this value to null
+        /// </summary>
+        public double? AveragingCachePressureMonitorFlowControlThreshold = AveragingCachePressureMonitor.DefaultThreshold;
+
+        /// <summary>
         /// EventHubSettingsType setting name.
         /// </summary>
         public const string EventHubConfigTypeName = "EventHubSettingsType";
@@ -38,7 +69,10 @@ namespace Orleans.ServiceBus.Providers
         /// CacheSizeMb setting name.
         /// </summary>
         public const string CacheSizeMbName = "CacheSizeMb";
-        private const int DefaultCacheSizeMb = 128; // default to 128mb cache.
+        /// <summary>
+        /// Default cache size in MB
+        /// </summary>
+        public const int DefaultCacheSizeMb = 128; // default to 128mb cache.
         private int? cacheSizeMb;
         /// <summary>
         /// Cache size in megabytes.
@@ -53,7 +87,10 @@ namespace Orleans.ServiceBus.Providers
         /// DataMinTimeInCache setting name.
         /// </summary>
         public const string DataMinTimeInCacheName = "DataMinTimeInCache";
-        private static readonly TimeSpan DefaultDataMinTimeInCache = TimeSpan.FromMinutes(5);
+        /// <summary>
+        /// Drfault DataMinTimeInCache
+        /// </summary>
+        public static readonly TimeSpan DefaultDataMinTimeInCache = TimeSpan.FromMinutes(5);
         private TimeSpan? dataMinTimeInCache;
         /// <summary>
         /// Minimum time message will stay in cache before it is available for time based purge.
@@ -68,7 +105,10 @@ namespace Orleans.ServiceBus.Providers
         /// DataMaxAgeInCache setting name.
         /// </summary>
         public const string DataMaxAgeInCacheName = "DataMaxAgeInCache";
-        private static readonly TimeSpan DefaultDataMaxAgeInCache = TimeSpan.FromMinutes(30);
+        /// <summary>
+        /// Default DataMaxAgeInCache
+        /// </summary>
+        public static readonly TimeSpan DefaultDataMaxAgeInCache = TimeSpan.FromMinutes(30);
         private TimeSpan? dataMaxAgeInCache;
         /// <summary>
         /// Difference in time between the newest and oldest messages in the cache.  Any messages older than this will be purged from the cache.
@@ -110,6 +150,18 @@ namespace Orleans.ServiceBus.Providers
             {
                 properties.Add(DataMaxAgeInCacheName, DataMaxAgeInCache.ToString());
             }
+            if (AveragingCachePressureMonitorFlowControlThreshold.HasValue)
+            {
+                properties.Add(AveragingCachePressureMonitorFlowControlThresholdName, AveragingCachePressureMonitorFlowControlThreshold.ToString());
+            }
+            if (SlowConsumingMonitorPressureWindowSize.HasValue)
+            {
+                properties.Add(SlowConsumingMonitorPressureWindowSizeName, SlowConsumingMonitorPressureWindowSize.ToString());
+            }
+            if (SlowConsumingMonitorFlowControlThreshold.HasValue)
+            {
+                properties.Add(SlowConsumingMonitorFlowControlThresholdName, SlowConsumingMonitorFlowControlThreshold.ToString());
+            }
         }
 
         /// <summary>
@@ -127,6 +179,20 @@ namespace Orleans.ServiceBus.Providers
             CacheSizeMb = providerConfiguration.GetIntProperty(CacheSizeMbName, DefaultCacheSizeMb);
             DataMinTimeInCache = providerConfiguration.GetTimeSpanProperty(DataMinTimeInCacheName, DefaultDataMinTimeInCache);
             DataMaxAgeInCache = providerConfiguration.GetTimeSpanProperty(DataMaxAgeInCacheName, DefaultDataMaxAgeInCache);
+            double flowControlThreshold = 0;
+            if (providerConfiguration.TryGetDoubleProperty(SlowConsumingMonitorFlowControlThresholdName, out flowControlThreshold))
+            {
+                this.SlowConsumingMonitorFlowControlThreshold = flowControlThreshold;
+            }
+            TimeSpan pressureWindowSize = TimeSpan.Zero;
+            if (providerConfiguration.TryGetTimeSpanProperty(SlowConsumingMonitorPressureWindowSizeName, out pressureWindowSize))
+            {
+                this.SlowConsumingMonitorPressureWindowSize = pressureWindowSize;
+            }
+            if (providerConfiguration.TryGetDoubleProperty(AveragingCachePressureMonitorFlowControlThresholdName, out flowControlThreshold))
+            {
+                this.AveragingCachePressureMonitorFlowControlThreshold = flowControlThreshold;
+            }
         }
 
         /// <summary>

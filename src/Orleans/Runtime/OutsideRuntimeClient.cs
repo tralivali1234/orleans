@@ -62,6 +62,7 @@ namespace Orleans
         private AssemblyProcessor assemblyProcessor;
         private MessageFactory messageFactory;
         private IPAddress localAddress;
+        private IGatewayListProvider gatewayListProvider;
 
         public SerializationManager SerializationManager { get; set; }
 
@@ -170,8 +171,7 @@ namespace Orleans
                     throw new InvalidOperationException("TestOnlyThrowExceptionDuringInit");
                 }
 
-                config.CheckGatewayProviderSettings();
-
+                this.gatewayListProvider = this.ServiceProvider.GetRequiredService<IGatewayListProvider>();
                 if (StatisticsCollector.CollectThreadTimeTrackingStats)
                 {
                     incomingMessagesThreadTimeTracking = new ThreadTrackingStatistic("ClientReceiver");
@@ -247,8 +247,7 @@ namespace Orleans
         // used for testing to (carefully!) allow two clients in the same process
         private async Task StartInternal()
         {
-            var gatewayListProvider = this.ServiceProvider.GetRequiredService<IGatewayListProvider>();
-            await gatewayListProvider.InitializeGatewayListProvider(config, LogManager.GetLogger(gatewayListProvider.GetType().Name))
+            await this.gatewayListProvider.InitializeGatewayListProvider(config, LogManager.GetLogger(gatewayListProvider.GetType().Name))
                                .WithTimeout(initTimeout);
 
             var generation = -SiloAddress.AllocateNewGeneration(); // Client generations are negative
@@ -493,7 +492,7 @@ namespace Orleans
                 object resultObject)
         {
             if (ExpireMessageIfExpired(message, MessagingStatisticsGroup.Phase.Respond))
-                return TaskDone.Done;
+                return Task.CompletedTask;
 
             object deepCopy = null;
             try
@@ -507,12 +506,12 @@ namespace Orleans
                 logger.Warn(
                     ErrorCode.ProxyClient_OGC_SendResponseFailed,
                     "Exception trying to send a response.", exc2);
-                return TaskDone.Done;
+                return Task.CompletedTask;
             }
 
             // the deep-copy succeeded.
             SendResponse(message, new Response(deepCopy));
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
@@ -624,7 +623,7 @@ namespace Orleans
             if (message.IsExpirableMessage(config))
             {
                 // don't set expiration for system target messages.
-                message.Expiration = DateTime.UtcNow + responseTimeout + Constants.MAXIMUM_CLOCK_SKEW;
+                message.TimeToLive = responseTimeout;
             }
 
             if (!oneWay)

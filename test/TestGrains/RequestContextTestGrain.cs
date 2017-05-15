@@ -29,16 +29,21 @@ namespace UnitTests.Grains
 
         public async Task<string> TraceIdDelayedEcho2()
         {
-            await TaskDone.Done;
+            await Task.CompletedTask;
             return RequestContext.Get("TraceId") as string;
         }
 
         public Task<Guid> E2EActivityId()
         {
-#if NETSTANDARD
-            return Task.FromResult(RequestContext.ActivityId.Value);
-#else
+            return Task.FromResult(RequestContext.ActivityId);
+        }
+
+        public Task<Guid> E2ELegacyActivityId()
+        {
+#if !NETSTANDARD
             return Task.FromResult(Trace.CorrelationManager.ActivityId);
+#else
+            return Task.FromResult(Guid.Empty);
 #endif
         }
 
@@ -52,7 +57,7 @@ namespace UnitTests.Grains
         public override Task OnActivateAsync()
         {
             logger = base.GetLogger();
-            return TaskDone.Done;
+            return Task.CompletedTask;
         }
 
 #region Implementation of IRequestContextTaskGrain
@@ -92,7 +97,7 @@ namespace UnitTests.Grains
             string traceIdOutside = RequestContext.Get("TraceId") as string;
             logger.Info(0, "{0}: Outside TraceId={1}", method, traceIdOutside);
 
-            return TaskDone.Done.ContinueWith(task =>
+            return Task.CompletedTask.ContinueWith(task =>
             {
                 string traceIdInside = RequestContext.Get("TraceId") as string;
                 logger.Info(0, "{0}: Inside TraceId={1}", method, traceIdInside);
@@ -107,7 +112,7 @@ namespace UnitTests.Grains
             string traceIdOutside = RequestContext.Get("TraceId") as string;
             logger.Info(0, "{0}: Outside TraceId={1}", method, traceIdOutside);
 
-            string traceId = await TaskDone.Done.ContinueWith(task =>
+            string traceId = await Task.CompletedTask.ContinueWith(task =>
             {
                 string traceIdInside = RequestContext.Get("TraceId") as string;
                 logger.Info(0, "{0}: Inside TraceId={1}", method, traceIdInside);
@@ -134,11 +139,7 @@ namespace UnitTests.Grains
 
         public Task<Guid> E2EActivityId()
         {
-#if NETSTANDARD
-            return Task.FromResult(RequestContext.ActivityId.Value);
-#else
-            return Task.FromResult(Trace.CorrelationManager.ActivityId);
-#endif
+            return Task.FromResult(RequestContext.ActivityId);
         }
 
         public async Task<Tuple<string, string>> TestRequestContext()
