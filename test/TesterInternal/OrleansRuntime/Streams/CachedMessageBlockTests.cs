@@ -65,7 +65,7 @@ namespace UnitTests.OrleansRuntime.Streams
 
         private class TestCacheDataAdapter : ICacheDataAdapter<TestQueueMessage, TestCachedMessage>
         {
-            public Action<IDisposable> OnBlockAllocated { set; private get; }
+            public Action<FixedSizeBuffer> OnBlockAllocated { set; private get; }
 
             public StreamPosition QueueMessageToCachedMessage(ref TestCachedMessage cachedMessage, TestQueueMessage queueMessage, DateTime dequeueTimeUtc)
             {
@@ -74,6 +74,16 @@ namespace UnitTests.OrleansRuntime.Streams
                 cachedMessage.SequenceNumber = queueMessage.SequenceToken.SequenceNumber;
                 cachedMessage.EventIndex = queueMessage.SequenceToken.EventIndex;
                 return streamPosition;
+            }
+
+            public DateTime? GetMessageEnqueueTimeUtc(ref TestCachedMessage message)
+            {
+                return null;
+            }
+
+            public DateTime? GetMessageDequeueTimeUtc(ref TestCachedMessage message)
+            {
+                return null;
             }
 
             public IBatchContainer GetBatchContainer(ref TestCachedMessage cachedMessage)

@@ -1,4 +1,5 @@
-﻿using Orleans.Providers.Streams;
+﻿using AWSUtils.Tests.StorageTests;
+using Orleans.Providers.Streams;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.TestingHost;
@@ -6,6 +7,7 @@ using OrleansAWSUtils.Streams;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging.Abstractions;
 using Tester.StreamingTests;
 using TestExtensions;
 using Xunit;
@@ -17,7 +19,7 @@ namespace AWSUtils.Tests.Streaming
     {
         private const string SQSStreamProviderName = "SQSProvider";
         private const string StreamNamespace = "SQSSubscriptionMultiplicityTestsNamespace";
-        private const string StorageConnectionString = "";
+        private string StorageConnectionString = AWSTestConstants.DefaultSQSConnectionString;
 
         private readonly ITestOutputHelper output;
         private readonly ClientStreamTestRunner runner;
@@ -30,17 +32,22 @@ namespace AWSUtils.Tests.Streaming
         
         public override TestCluster CreateTestCluster()
         {
-            var deploymentId = Guid.NewGuid().ToString();
+            if (!AWSTestConstants.IsSqsAvailable)
+            {
+                throw new SkipException("Empty connection string");
+            }
+
+            var clusterId = Guid.NewGuid().ToString();
             var streamConnectionString = new Dictionary<string, string>
                 {
                     { "DataConnectionString",  StorageConnectionString},
-                    { "DeploymentId",  deploymentId}
+                    { "DeploymentId",  clusterId}
                 };
             var options = new TestClusterOptions(2);
             options.ClusterConfiguration.AddMemoryStorageProvider("PubSubStore");
 
-            options.ClusterConfiguration.Globals.DeploymentId = deploymentId;
-            options.ClientConfiguration.DeploymentId = deploymentId;
+            options.ClusterConfiguration.Globals.ClusterId = clusterId;
+            options.ClientConfiguration.ClusterId = clusterId;
             options.ClusterConfiguration.Globals.ClientDropTimeout = TimeSpan.FromSeconds(5);
             options.ClientConfiguration.DataConnectionString = StorageConnectionString;
             options.ClusterConfiguration.Globals.DataConnectionString = StorageConnectionString;
@@ -51,12 +58,12 @@ namespace AWSUtils.Tests.Streaming
 
         public override void Dispose()
         {
-            var deploymentId = HostedCluster.DeploymentId;
+            var clusterId = HostedCluster.ClusterId;
             base.Dispose();
-            SQSStreamProviderUtils.DeleteAllUsedQueues(SQSStreamProviderName, deploymentId, StorageConnectionString).Wait();
+            SQSStreamProviderUtils.DeleteAllUsedQueues(SQSStreamProviderName, clusterId, StorageConnectionString, NullLoggerFactory.Instance).Wait();
         }
 
-        [Fact, TestCategory("AWS")]
+        [SkippableFact, TestCategory("AWS")]
         public async Task SQSStreamProducerOnDroppedClientTest()
         {
             logger.Info("************************ AQStreamProducerOnDroppedClientTest *********************************");

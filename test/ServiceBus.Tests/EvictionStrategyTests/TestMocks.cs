@@ -1,39 +1,32 @@
-﻿#if NETSTANDARD
-using Microsoft.Azure.EventHubs;
-#else
-using Microsoft.ServiceBus.Messaging;
-#endif
+﻿using Microsoft.Azure.EventHubs;
 using Orleans.Providers.Streams.Common;
 using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
 using Orleans.Serialization;
 using Orleans.ServiceBus.Providers;
 using Orleans.Streams;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace ServiceBus.Tests.EvictionStrategyTests
 {
     public class EventHubQueueCacheForTesting : EventHubQueueCache
     {
         public EventHubQueueCacheForTesting(IStreamQueueCheckpointer<string> checkpointer, ICacheDataAdapter<EventData, CachedEventHubMessage> cacheDataAdapter,
-            ICacheDataComparer<CachedEventHubMessage> comparer, Logger logger, IEvictionStrategy<CachedEventHubMessage> evictionStrategy)
-            :base(checkpointer, cacheDataAdapter, comparer, logger, evictionStrategy)
+            ICacheDataComparer<CachedEventHubMessage> comparer, ILogger logger, IEvictionStrategy<CachedEventHubMessage> evictionStrategy)
+            :base(checkpointer, cacheDataAdapter, comparer, logger, evictionStrategy, null, null)
             { }
-        
-        public int ItemCount { get { return this.cache.ItemCount; } }
+
+        public int ItemCount => this.cache.ItemCount;
     }
     public class EHEvictionStrategyForTesting : EventHubCacheEvictionStrategy
     {
-        public EHEvictionStrategyForTesting(Logger logger, TimePurgePredicate timePurage = null)
-            :base(logger, timePurage)
+        public EHEvictionStrategyForTesting(ILogger logger, ICacheMonitor cacheMonitor = null, TimeSpan? monitorWriteInterval = null, TimePurgePredicate timePurage = null)
+            :base(logger, timePurage, cacheMonitor, monitorWriteInterval)
         { }
 
-        public Queue<FixedSizeBuffer> InUseBuffers { get { return this.inUseBuffers; } }
-        public Queue<FixedSizeBuffer> PurgedBuffers { get { return this.purgedBuffers; } }
+        public Queue<FixedSizeBuffer> InUseBuffers => this.inUseBuffers;
     }
 
     public class MockEventHubCacheAdaptor : EventHubDataAdapter
@@ -53,25 +46,10 @@ namespace ServiceBus.Tests.EvictionStrategyTests
         }
     }
 
-    internal class MockStreamQueueCheckpointer : IStreamQueueCheckpointer<string>
-    {
-        public bool CheckpointExists => true;
-
-        public Task<string> Load()
-        {
-            //do nothing
-            return Task.FromResult<string>("");
-        }
-
-        public void Update(string offset, DateTime utcNow)
-        {
-            //do nothing
-        }
-    }
-
     internal class CachePressureInjectionMonitor : ICachePressureMonitor
     {
         public bool isUnderPressure { get; set; }
+        public ICacheMonitor CacheMonitor { set; private get; }
         public CachePressureInjectionMonitor()
         {
             this.isUnderPressure = false;

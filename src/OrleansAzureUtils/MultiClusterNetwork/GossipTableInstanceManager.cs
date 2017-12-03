@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.WindowsAzure.Storage.Table;
 using Orleans.AzureUtils;
 using Orleans.MultiCluster;
@@ -112,26 +113,26 @@ namespace Orleans.Runtime.MultiClusterNetwork
 
         private const string INSTANCE_TABLE_NAME = "OrleansGossipTable";
 
-        private readonly AzureTableDataManager<GossipTableEntry> storage;
-        private readonly Logger logger;
+        private readonly Orleans.AzureUtils.AzureTableDataManager<GossipTableEntry> storage;
+        private readonly ILogger logger;
 
         internal static TimeSpan initTimeout = AzureTableDefaultPolicies.TableCreationTimeout;
 
         public string GlobalServiceId { get; private set; }
 
-        private GossipTableInstanceManager(Guid globalServiceId, string storageConnectionString, Logger logger)
+        private GossipTableInstanceManager(Guid globalServiceId, string storageConnectionString, ILoggerFactory loggerFactory)
         {
             GlobalServiceId = globalServiceId.ToString();
-            this.logger = logger;
+            this.logger = loggerFactory.CreateLogger<GossipTableInstanceManager>();
             storage = new AzureTableDataManager<GossipTableEntry>(
-                INSTANCE_TABLE_NAME, storageConnectionString, logger);
+                INSTANCE_TABLE_NAME, storageConnectionString, loggerFactory);
         }
 
-        public static async Task<GossipTableInstanceManager> GetManager(Guid globalServiceId, string storageConnectionString, Logger logger)
+        public static async Task<GossipTableInstanceManager> GetManager(Guid globalServiceId, string storageConnectionString, ILoggerFactory loggerFactory)
         {
-            if (logger == null) throw new ArgumentNullException("logger");
+            if (loggerFactory == null) throw new ArgumentNullException(nameof(loggerFactory));
             
-            var instance = new GossipTableInstanceManager(globalServiceId, storageConnectionString, logger);
+            var instance = new GossipTableInstanceManager(globalServiceId, storageConnectionString, loggerFactory);
             try
             {
                 await instance.storage.InitTableAsync()
@@ -141,14 +142,14 @@ namespace Orleans.Runtime.MultiClusterNetwork
             {
                 string errorMsg = String.Format("Unable to create or connect to the Azure table {0} in {1}", 
                     instance.TableName, initTimeout);
-                instance.logger.Error(ErrorCode.AzureTable_32, errorMsg, te);
+                instance.logger.Error((int)AzureUtils.Utilities.ErrorCode.AzureTable_32, errorMsg, te);
                 throw new OrleansException(errorMsg, te);
             }
             catch (Exception ex)
             {
                 string errorMsg = String.Format("Exception trying to create or connect to Azure table {0} : {1}", 
                     instance.TableName, ex.Message);
-                instance.logger.Error(ErrorCode.AzureTable_33, errorMsg, ex);
+                instance.logger.Error((int)AzureUtils.Utilities.ErrorCode.AzureTable_33, errorMsg, ex);
                 throw new OrleansException(errorMsg, ex);
             }
             return instance;
@@ -176,7 +177,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                 catch (Exception exc)
                 {
                     logger.Error(
-                        ErrorCode.AzureTable_61,
+                        (int)AzureUtils.Utilities.ErrorCode.AzureTable_61,
                         string.Format("Intermediate error parsing GossipTableEntry: {0}. Ignoring this entry.", tableEntry),
                         exc);
                 }
@@ -211,7 +212,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                     catch (Exception exc)
                     {
                         logger.Error(
-                            ErrorCode.AzureTable_61,
+                            (int)AzureUtils.Utilities.ErrorCode.AzureTable_61,
                             string.Format("Intermediate error parsing GossipTableEntry: {0}. Ignoring this entry.", tableEntry),
                             exc);
                     }
@@ -334,7 +335,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                 string restStatus;
                 if (!AzureStorageUtils.EvaluateException(exc, out httpStatusCode, out restStatus)) throw;
 
-                if (logger.IsVerbose2) logger.Verbose2("{0} failed with httpStatusCode={1}, restStatus={2}", operation, httpStatusCode, restStatus);
+                if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("{0} failed with httpStatusCode={1}, restStatus={2}", operation, httpStatusCode, restStatus);
                 if (AzureStorageUtils.IsContentionError(httpStatusCode)) return false;
 
                 throw;

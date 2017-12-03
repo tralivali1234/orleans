@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
@@ -6,6 +7,9 @@ using System.Threading;
 using Orleans.AzureUtils;
 using Orleans.Runtime.Configuration;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Orleans.Logging;
 
 namespace Orleans.Runtime.Host
 {
@@ -40,22 +44,40 @@ namespace Orleans.Runtime.Host
         /// Defaults to <c>OrleansProxyEndpoint</c>
         /// </summary>
         public string ProxyEndpointConfigurationKeyName { get; set; }
-        
+
         private SiloHost host;
         private OrleansSiloInstanceManager siloInstanceManager;
         private SiloInstanceTableEntry myEntry;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private readonly IServiceRuntimeWrapper serviceRuntimeWrapper;
+        //TODO: hook this up with SiloBuilder when SiloBuilder supports create AzureSilo
+        private static ILoggerFactory DefaultLoggerFactory = CreateDefaultLoggerFactory("AzureSilo.log");
+
+        private readonly ILoggerFactory loggerFactory = DefaultLoggerFactory;
+
+        public AzureSilo()
+            :this(new ServiceRuntimeWrapper(DefaultLoggerFactory), DefaultLoggerFactory)
+        {
+        }
 
         /// <summary>
         /// Constructor
         /// </summary>
-        public AzureSilo()
-            : this(new ServiceRuntimeWrapper())
+        public AzureSilo(ILoggerFactory loggerFactory)
+            : this(new ServiceRuntimeWrapper(loggerFactory), loggerFactory)
         {
         }
 
-        internal AzureSilo(IServiceRuntimeWrapper serviceRuntimeWrapper)
+        public static ILoggerFactory CreateDefaultLoggerFactory(string filePath)
+        {
+            var factory = new LoggerFactory();
+            factory.AddProvider(new FileLoggerProvider(filePath));
+            if (ConsoleText.IsConsoleAvailable)
+                factory.AddConsole();
+            return factory;
+        }
+
+        internal AzureSilo(IServiceRuntimeWrapper serviceRuntimeWrapper, ILoggerFactory loggerFactory)
         {
             this.serviceRuntimeWrapper = serviceRuntimeWrapper;
             DataConnectionConfigurationSettingName = AzureConstants.DataConnectionConfigurationSettingName;
@@ -65,7 +87,8 @@ namespace Orleans.Runtime.Host
             StartupRetryPause = AzureConstants.STARTUP_TIME_PAUSE; // 5 seconds
             MaxRetries = AzureConstants.MAX_RETRIES;  // 120 x 5s = Total: 10 minutes
 
-            logger = LogManager.GetLogger("OrleansAzureSilo", LoggerType.Runtime);
+            this.loggerFactory = loggerFactory;
+            logger = loggerFactory.CreateLogger<AzureSilo>();
         }
 
         /// <summary>
@@ -77,21 +100,21 @@ namespace Orleans.Runtime.Host
         {
             if (config.Globals.LivenessType == GlobalConfiguration.LivenessProviderType.AzureTable)
             {
-                string deploymentId = config.Globals.DeploymentId ?? serviceRuntimeWrapper.DeploymentId;
+                string clusterId = config.Globals.ClusterId ?? serviceRuntimeWrapper.DeploymentId;
                 string connectionString = config.Globals.DataConnectionString ??
                                           serviceRuntimeWrapper.GetConfigurationSettingValue(DataConnectionConfigurationSettingName);
 
                 try
                 {
-                    var manager = siloInstanceManager ?? await OrleansSiloInstanceManager.GetManager(deploymentId, connectionString);
+                    var manager = siloInstanceManager ?? await OrleansSiloInstanceManager.GetManager(clusterId, connectionString, loggerFactory);
                     var instances = await manager.DumpSiloInstanceTable();
-                    logger.Verbose(instances);
+                    logger.Debug(instances);
                 }
                 catch (Exception exc)
                 {
                     var error = String.Format("Connecting to the storage table has failed with {0}", LogFormatter.PrintException(exc));
                     Trace.TraceError(error);
-                    logger.Error(ErrorCode.AzureTable_34, error, exc);
+                    logger.Error((int)AzureUtils.Utilities.ErrorCode.AzureTable_34, error, exc);
                     return false;
                 }
             }
@@ -105,7 +128,7 @@ namespace Orleans.Runtime.Host
         /// <returns>Default ClusterConfiguration </returns>
         public static ClusterConfiguration DefaultConfiguration()
         {
-            return DefaultConfiguration(new ServiceRuntimeWrapper());
+            return DefaultConfiguration(new ServiceRuntimeWrapper(DefaultLoggerFactory));
         }
 
         internal static ClusterConfiguration DefaultConfiguration(IServiceRuntimeWrapper serviceRuntimeWrapper)
@@ -113,7 +136,7 @@ namespace Orleans.Runtime.Host
             var config = new ClusterConfiguration();
 
             config.Globals.LivenessType = GlobalConfiguration.LivenessProviderType.AzureTable;
-            config.Globals.DeploymentId = serviceRuntimeWrapper.DeploymentId;
+            config.Globals.ClusterId = serviceRuntimeWrapper.DeploymentId;
             try
             {
                 config.Globals.DataConnectionString = serviceRuntimeWrapper.GetConfigurationSettingValue(AzureConstants.DataConnectionConfigurationSettingName);
@@ -138,7 +161,7 @@ namespace Orleans.Runtime.Host
         /// <summary>
         /// Initialize this Orleans silo for execution. Config data will be read from silo config file as normal
         /// </summary>
-        /// <param name="deploymentId">Azure DeploymentId this silo is running under. If null, defaults to the value from the configuration.</param>
+        /// <param name="deploymentId">Azure ClusterId this silo is running under. If null, defaults to the value from the configuration.</param>
 		/// <param name="connectionString">Azure DataConnectionString. If null, defaults to the DataConnectionString setting from the Azure configuration for this role.</param>
         /// <returns><c>true</c> is the silo startup was successful</returns>
         public bool Start(string deploymentId = null, string connectionString = null)
@@ -161,16 +184,16 @@ namespace Orleans.Runtime.Host
         }
 
         /// <summary>
-        /// Initialize this Orleans silo for execution with the specified Azure deploymentId
+        /// Initialize this Orleans silo for execution with the specified Azure clusterId
         /// </summary>
         /// <param name="config">If null, Config data will be read from silo config file as normal, otherwise use the specified config data.</param>
-        /// <param name="deploymentId">Azure DeploymentId this silo is running under</param>
+        /// <param name="clusterId">Azure ClusterId this silo is running under</param>
 		/// <param name="connectionString">Azure DataConnectionString. If null, defaults to the DataConnectionString setting from the Azure configuration for this role.</param>
         /// <returns><c>true</c> if the silo startup was successful</returns>
-        internal bool Start(ClusterConfiguration config, string deploymentId, string connectionString)
+        internal bool Start(ClusterConfiguration config, string clusterId, string connectionString)
         {
-            if (config != null && deploymentId != null)
-                throw new ArgumentException("Cannot use config and deploymentId on the same time");
+            if (config != null && clusterId != null)
+                throw new ArgumentException("Cannot use config and clusterId on the same time");
 
             // Program ident
             Trace.TraceInformation("Starting {0} v{1}", this.GetType().FullName, RuntimeVersion.Current);
@@ -198,16 +221,16 @@ namespace Orleans.Runtime.Host
 
             // Bootstrap this Orleans silo instance
 
-            // If deploymentId was not direclty provided, take the value in the config. If it is not 
-            // in the config too, just take the DeploymentId from Azure
-            if (deploymentId == null)
-                deploymentId = string.IsNullOrWhiteSpace(host.Config.Globals.DeploymentId)
+            // If clusterId was not direclty provided, take the value in the config. If it is not 
+            // in the config too, just take the ClusterId from Azure
+            if (clusterId == null)
+                clusterId = string.IsNullOrWhiteSpace(host.Config.Globals.ClusterId)
                     ? serviceRuntimeWrapper.DeploymentId
-                    : host.Config.Globals.DeploymentId;
+                    : host.Config.Globals.ClusterId;
 
             myEntry = new SiloInstanceTableEntry
             {
-                DeploymentId = deploymentId,
+                DeploymentId = clusterId,
                 Address = myEndpoint.Address.ToString(),
                 Port = myEndpoint.Port.ToString(CultureInfo.InvariantCulture),
                 Generation = generation.ToString(CultureInfo.InvariantCulture),
@@ -221,7 +244,7 @@ namespace Orleans.Runtime.Host
                 FaultZone = serviceRuntimeWrapper.FaultDomain.ToString(CultureInfo.InvariantCulture),
                 StartTime = LogFormatter.PrintDate(DateTime.UtcNow),
 
-                PartitionKey = deploymentId,
+                PartitionKey = clusterId,
                 RowKey = myEndpoint.Address + "-" + myEndpoint.Port + "-" + generation
             };
 
@@ -231,14 +254,14 @@ namespace Orleans.Runtime.Host
             try
             {
                 siloInstanceManager = OrleansSiloInstanceManager.GetManager(
-                    deploymentId, connectionString).WithTimeout(AzureTableDefaultPolicies.TableCreationTimeout).Result;
+                    clusterId, connectionString, this.loggerFactory).WithTimeout(AzureTableDefaultPolicies.TableCreationTimeout).Result;
             }
             catch (Exception exc)
             {
                 var error = String.Format("Failed to create OrleansSiloInstanceManager. This means CreateTableIfNotExist for silo instance table has failed with {0}",
                     LogFormatter.PrintException(exc));
                 Trace.TraceError(error);
-                logger.Error(ErrorCode.AzureTable_34, error, exc);
+                logger.Error((int)AzureUtils.Utilities.ErrorCode.AzureTable_34, error, exc);
                 throw new OrleansException(error, exc);
             }
 
@@ -253,7 +276,7 @@ namespace Orleans.Runtime.Host
             siloInstanceManager.RegisterSiloInstance(myEntry);
 
             // Initialize this Orleans silo instance
-            host.SetDeploymentId(deploymentId, connectionString);
+            host.SetDeploymentId(clusterId, connectionString);
             host.SetSiloEndpoint(myEndpoint, generation);
             host.SetProxyEndpoint(proxyEndpoint);
 

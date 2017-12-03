@@ -1,8 +1,8 @@
 ﻿
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 using Orleans.Runtime;
 using Orleans.Streams;
 
@@ -32,8 +32,10 @@ namespace Orleans.Providers.Streams.Common
         private readonly CachedMessagePool<TQueueMessage, TCachedMessage> pool;
         private readonly ICacheDataAdapter<TQueueMessage, TCachedMessage> cacheDataAdapter;
         private readonly ICacheDataComparer<TCachedMessage> comparer;
-        private readonly Logger logger;
-        
+        private readonly ILogger logger;
+        private readonly ICacheMonitor cacheMonitor;
+        private readonly PeriodicAction periodicMonitoring;
+        private int itemCount;
         /// <summary>
         /// Cached message most recently added
         /// </summary>
@@ -63,15 +65,7 @@ namespace Orleans.Providers.Streams.Common
         /// <summary>
         /// Cached message count
         /// </summary>
-        public int ItemCount { get
-            {
-                int count = 0;
-                foreach (var block in this.messageBlocks)
-                {
-                    count += block.ItemCount;
-                }
-                return count;
-            }
+        public int ItemCount { get { return this.itemCount; }
         }
 
         /// <summary>
@@ -80,7 +74,9 @@ namespace Orleans.Providers.Streams.Common
         /// <param name="cacheDataAdapter"></param>
         /// <param name="comparer"></param>
         /// <param name="logger"></param>
-        public PooledQueueCache(ICacheDataAdapter<TQueueMessage, TCachedMessage> cacheDataAdapter, ICacheDataComparer<TCachedMessage> comparer, Logger logger)
+        /// <param name="cacheMonitor"></param>
+        /// <param name="cacheMonitorWriteInterval">cache monitor write interval.  Only triggered for active caches.</param>
+        public PooledQueueCache(ICacheDataAdapter<TQueueMessage, TCachedMessage> cacheDataAdapter, ICacheDataComparer<TCachedMessage> comparer, ILogger logger, ICacheMonitor cacheMonitor, TimeSpan? cacheMonitorWriteInterval)
         {
             if (cacheDataAdapter == null)
             {
@@ -96,9 +92,16 @@ namespace Orleans.Providers.Streams.Common
             }
             this.cacheDataAdapter = cacheDataAdapter;
             this.comparer = comparer;
-            this.logger = logger.GetSubLogger("messagecache", "-");
+            this.logger = logger;
+            this.itemCount = 0;
             pool = new CachedMessagePool<TQueueMessage, TCachedMessage>(cacheDataAdapter);
             messageBlocks = new LinkedList<CachedMessageBlock<TCachedMessage>>();
+            this.cacheMonitor = cacheMonitor;
+
+            if (this.cacheMonitor != null && cacheMonitorWriteInterval.HasValue)
+            {
+                this.periodicMonitoring = new PeriodicAction(cacheMonitorWriteInterval.Value, this.ReportCacheMessageStatistics);
+            }
         }
 
         /// <summary>
@@ -118,6 +121,24 @@ namespace Orleans.Providers.Streams.Common
             var cursor = new Cursor(streamIdentity);
             SetCursor(cursor, sequenceToken);
             return cursor;
+        }
+
+        private void ReportCacheMessageStatistics()
+        {
+            if (this.IsEmpty)
+            {
+                this.cacheMonitor.ReportMessageStatistics(null, null, null, this.ItemCount);
+            }
+            else
+            {
+                var newestMessage = this.Newest.Value;
+                var oldestMessage = this.Oldest.Value;
+                var now = DateTime.UtcNow;
+                var newestMessageEnqueueTime = this.cacheDataAdapter.GetMessageEnqueueTimeUtc(ref newestMessage);
+                var oldestMessageEnqueueTime = this.cacheDataAdapter.GetMessageEnqueueTimeUtc(ref oldestMessage);
+                var oldestMessageDequeueTime = this.cacheDataAdapter.GetMessageDequeueTimeUtc(ref oldestMessage);
+                this.cacheMonitor.ReportMessageStatistics(oldestMessageEnqueueTime, oldestMessageDequeueTime, newestMessageEnqueueTime, this.itemCount);
+            }
         }
 
         private void SetCursor(Cursor cursor, StreamSequenceToken sequenceToken)
@@ -280,12 +301,24 @@ namespace Orleans.Providers.Streams.Common
         }
 
         /// <summary>
-        /// Add a queue message to the cache
+        /// Add a list of queue message to the cache 
         /// </summary>
-        /// <param name="message"></param>
-        /// <param name="dequeueTimeUtc"></param>
+        /// <param name="messages"></param>
+        /// <param name="dequeueTime"></param>
         /// <returns></returns>
-        public StreamPosition Add(TQueueMessage message, DateTime dequeueTimeUtc)
+        public List<StreamPosition> Add(List<TQueueMessage> messages, DateTime dequeueTime)
+        {
+            var streamPosisions = new List<StreamPosition>();
+            foreach (var message in messages)
+            {
+                streamPosisions.Add(this.Add(message, dequeueTime));
+            }
+            this.cacheMonitor?.TrackMessagesAdded(messages.Count);
+            periodicMonitoring?.TryAction(dequeueTime);
+            return streamPosisions;
+        }
+
+        private StreamPosition Add(TQueueMessage message, DateTime dequeueTimeUtc)
         {
             if (message == null)
             {
@@ -299,7 +332,7 @@ namespace Orleans.Providers.Streams.Common
             // If new block, add message block to linked list
             if (block != messageBlocks.FirstOrDefault())
                 messageBlocks.AddFirst(block.Node);
-
+            itemCount++;
             return streamPosition;
         }
 
@@ -309,6 +342,7 @@ namespace Orleans.Providers.Streams.Common
         public void RemoveOldestMessage()
         {
             this.messageBlocks.Last.Value.Remove();
+            this.itemCount--;
             CachedMessageBlock<TCachedMessage> lastCachedMessageBlock = this.messageBlocks.Last.Value;
             // if block is currently empty, but all capacity has been exausted, remove
             if (lastCachedMessageBlock.IsEmpty && !lastCachedMessageBlock.HasCapacity)

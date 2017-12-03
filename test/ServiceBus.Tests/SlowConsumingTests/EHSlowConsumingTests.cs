@@ -7,6 +7,7 @@ using Orleans.AzureUtils;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.ServiceBus.Providers;
+using Orleans.ServiceBus.Providers.Testing;
 using Orleans.Storage;
 using Orleans.Streams;
 using Orleans.TestingHost;
@@ -24,25 +25,12 @@ namespace ServiceBus.Tests.SlowConsumingTests
     {
         private const string StreamProviderName = "EventHubStreamProvider";
         private const string StreamNamespace = "EHTestsNamespace";
-        private const string EHPath = "ehorleanstest";
-        private const string EHConsumerGroup = "orleansnightly";
-        private const string EHCheckpointTable = "ehcheckpoint";
         private static readonly string CheckpointNamespace = Guid.NewGuid().ToString();
         private static readonly TimeSpan monitorPressureWindowSize = TimeSpan.FromSeconds(3);
         private static readonly TimeSpan timeout = TimeSpan.FromSeconds(30);
         private const double flowControlThredhold = 0.6;
         public static readonly EventHubGeneratorStreamProviderSettings ProviderSettings =
             new EventHubGeneratorStreamProviderSettings(StreamProviderName);
-
-        private static readonly Lazy<EventHubSettings> EventHubConfig = new Lazy<EventHubSettings>(() =>
-            new EventHubSettings(
-                TestDefaultConfiguration.EventHubConnectionString,
-                EHConsumerGroup, EHPath));
-
-        private static readonly EventHubCheckpointerSettings CheckpointerSettings =
-            new EventHubCheckpointerSettings(TestDefaultConfiguration.DataConnectionString,
-                EHCheckpointTable, CheckpointNamespace, TimeSpan.FromSeconds(1));
-
 
         private readonly Fixture fixture;
 
@@ -58,40 +46,15 @@ namespace ServiceBus.Tests.SlowConsumingTests
                 return new TestCluster(options);
             }
 
-            private bool isSkippable;
-            protected override void CheckPreconditionsOrThrow()
-            {
-                base.CheckPreconditionsOrThrow();
-                if (string.IsNullOrWhiteSpace(TestDefaultConfiguration.EventHubConnectionString) ||
-                    string.IsNullOrWhiteSpace(TestDefaultConfiguration.DataConnectionString))
-                {
-                    this.isSkippable = true;
-                    throw new SkipException("EventHubConnectionString or DataConnectionString is not set up");
-                }
-            }
-
-            public override void Dispose()
-            {
-                base.Dispose();
-                if (!isSkippable)
-                {
-                    var dataManager = new AzureTableDataManager<TableEntity>(CheckpointerSettings.TableName, CheckpointerSettings.DataConnectionString);
-                    dataManager.InitTableAsync().Wait();
-                    dataManager.ClearTableAsync().Wait();
-                }
-            }
-
             private static void AdjustClusterConfiguration(ClusterConfiguration config)
             {
                 var settings = new Dictionary<string, string>();
                 // get initial settings from configs
                 ProviderSettings.WriteProperties(settings);
                 ProviderSettings.WriteDataGeneratingConfig(settings);
-                EventHubConfig.Value.WriteProperties(settings);
-                CheckpointerSettings.WriteProperties(settings);
 
                 // add queue balancer setting
-                settings.Add(PersistentStreamProviderConfig.QUEUE_BALANCER_TYPE, StreamQueueBalancerType.DynamicClusterConfigDeploymentBalancer.ToString());
+                settings.Add(PersistentStreamProviderConfig.QUEUE_BALANCER_TYPE, StreamQueueBalancerType.DynamicClusterConfigDeploymentBalancer.AssemblyQualifiedName);
 
                 // register stream provider
                 config.Globals.RegisterStreamProvider<EHStreamProviderWithCreatedCacheList>(StreamProviderName, settings);
@@ -108,7 +71,7 @@ namespace ServiceBus.Tests.SlowConsumingTests
             seed = new Random();
         }
 
-        [SkippableFact, TestCategory("Functional")]
+        [Fact, TestCategory("Functional")]
         public async Task EHSlowConsuming_ShouldFavorSlowConsumer()
         {
             var streamId = new FullStreamIdentity(Guid.NewGuid(), StreamNamespace, StreamProviderName);
@@ -141,7 +104,7 @@ namespace ServiceBus.Tests.SlowConsumingTests
                 (int)EventDataGeneratorStreamProvider.AdapterFactory.Commands.Stop_Producing_On_Stream, streamId);
         }
 
-        private async Task<List<ISampleStreaming_ConsumerGrain>> SetUpHealthyConsumerGrain(IGrainFactory GrainFactory, Guid streamId, string streamNameSpace, string streamProvider, int grainCount)
+        public static async Task<List<ISampleStreaming_ConsumerGrain>> SetUpHealthyConsumerGrain(IGrainFactory GrainFactory, Guid streamId, string streamNameSpace, string streamProvider, int grainCount)
         {
             List<ISampleStreaming_ConsumerGrain> grains = new List<ISampleStreaming_ConsumerGrain>();
             List<Task> tasks = new List<Task>();

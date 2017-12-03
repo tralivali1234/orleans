@@ -26,7 +26,7 @@ namespace UnitTests.MembershipTests
 
         protected async Task Do_Liveness_OracleTest_1()
         {
-            output.WriteLine("DeploymentId= {0}", this.HostedCluster.DeploymentId);
+            output.WriteLine("ClusterId= {0}", this.HostedCluster.ClusterId);
 
             SiloHandle silo3 = this.HostedCluster.StartAdditionalSilo();
 
@@ -215,9 +215,9 @@ namespace UnitTests.MembershipTests
         }
 
         //[Fact, TestCategory("Functional"), TestCategory("Membership")]
-        public async Task Liveness_Grain_5_ShutdownRestartZeroLoss()
+        /*public async Task Liveness_Grain_5_ShutdownRestartZeroLoss()
         {
             await Do_Liveness_OracleTest_3();
-        }
+        }*/
     }
 }

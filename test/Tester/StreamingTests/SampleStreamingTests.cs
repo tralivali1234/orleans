@@ -42,6 +42,17 @@ namespace UnitTests.StreamingTests
         }
 
         [Fact, TestCategory("BVT"), TestCategory("Functional")]
+        public void SampleStreamingTests_StreamTypeMismatch_ShouldThrowOrleansException()
+        {
+            var streamId = Guid.NewGuid();
+            var streamNameSpace = "SmsStream";
+            var stream = this.fixture.Client.GetStreamProvider(StreamProvider).GetStream<int>(streamId, streamNameSpace);
+            Assert.Throws<Orleans.Runtime.OrleansException>(() => {
+                this.fixture.Client.GetStreamProvider(StreamProvider).GetStream<string>(streamId, streamNameSpace);
+                });
+        }
+
+        [Fact, TestCategory("BVT"), TestCategory("Functional")]
         public async Task SampleStreamingTests_1()
         {
             this.logger.Info("************************ SampleStreamingTests_1 *********************************");
@@ -116,6 +127,46 @@ namespace UnitTests.StreamingTests
                 var actual = await grain.GetCounter(item.Namespace);
                 var expected = item.Namespace.StartsWith("red") ? item.Events : 0;
                 Assert.Equal(expected, actual);
+            }
+        }
+
+        [Fact, TestCategory("Functional")]
+        public async Task FilteredImplicitSubscriptionWithExtensionGrainTest()
+        {
+            logger.Info($"************************ {nameof(FilteredImplicitSubscriptionWithExtensionGrainTest)} *********************************");
+
+            var redEvents = new[] { 3, 5, 2, 4 };
+            var blueEvents = new[] { 7, 3, 6 };
+
+            var streamId = Guid.NewGuid();
+
+            var provider = fixture.HostedCluster.StreamProviderManager.GetStreamProvider(StreamTestsConstants.SMS_STREAM_PROVIDER_NAME);
+            for (int i = 0; i < redEvents.Length; i++)
+            {
+                var stream = provider.GetStream<int>(streamId, "red" + i);
+                for (int j = 0; j < redEvents[i]; j++)
+                    await stream.OnNextAsync(j);
+            }
+            for (int i = 0; i < blueEvents.Length; i++)
+            {
+                var stream = provider.GetStream<int>(streamId, "blue" + i);
+                for (int j = 0; j < blueEvents[i]; j++)
+                    await stream.OnNextAsync(j);
+            }
+
+            for (int i = 0; i < redEvents.Length; i++)
+            {
+                var grain = this.fixture.GrainFactory.GetGrain<IFilteredImplicitSubscriptionWithExtensionGrain>(
+                    streamId, "red" + i, null);
+                var actual = await grain.GetCounter();
+                Assert.Equal(redEvents[i], actual);
+            }
+            for (int i = 0; i < blueEvents.Length; i++)
+            {
+                var grain = this.fixture.GrainFactory.GetGrain<IFilteredImplicitSubscriptionWithExtensionGrain>(
+                    streamId, "blue" + i, null);
+                var actual = await grain.GetCounter();
+                Assert.Equal(0, actual);
             }
         }
     }
