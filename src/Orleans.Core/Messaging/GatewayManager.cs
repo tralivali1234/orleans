@@ -4,8 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Orleans.Configuration;
 using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
 
 namespace Orleans.Messaging
 {
@@ -24,19 +24,19 @@ namespace Orleans.Messaging
         private DateTime lastRefreshTime;
         private int roundRobinCounter;
         private readonly SafeRandom rand;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private readonly ILoggerFactory loggerFactory;
         private readonly object lockable;
 
-        private readonly ClientConfiguration config;
+        private readonly GatewayOptions gatewayOptions;
         private bool gatewayRefreshCallInitiated;
 
-        public GatewayManager(ClientConfiguration cfg, IGatewayListProvider gatewayListProvider, ILoggerFactory loggerFactory)
+        public GatewayManager(GatewayOptions gatewayOptions, IGatewayListProvider gatewayListProvider, ILoggerFactory loggerFactory)
         {
-            config = cfg;
+            this.gatewayOptions = gatewayOptions;
             knownDead = new Dictionary<Uri, DateTime>();
             rand = new SafeRandom();
-            logger = new LoggerWrapper<GatewayManager>(loggerFactory);
+            logger = loggerFactory.CreateLogger<GatewayManager>();
             this.loggerFactory = loggerFactory;
             lockable = new object();
             gatewayRefreshCallInitiated = false;
@@ -48,7 +48,7 @@ namespace Orleans.Messaging
             if (knownGateways.Count == 0)
             {
                 string gatewayProviderType = gatewayListProvider.GetType().FullName;
-                string err = String.Format("Could not find any gateway in {0}. Orleans client cannot initialize.", gatewayProviderType);
+                string err = $"Could not find any gateway in {gatewayProviderType}. Orleans client cannot initialize.";
                 logger.Error(ErrorCode.GatewayManager_NoGateways, err);
                 throw new OrleansException(err);
             }
@@ -60,14 +60,14 @@ namespace Orleans.Messaging
                 ((IGatewayListObservable)ListProvider).SubscribeToGatewayNotificationEvents(this);
             }
 
-            roundRobinCounter = cfg.PreferedGatewayIndex >= 0 ? cfg.PreferedGatewayIndex : rand.Next(knownGateways.Count);
+            roundRobinCounter = this.gatewayOptions.PreferedGatewayIndex >= 0 ? this.gatewayOptions.PreferedGatewayIndex : rand.Next(knownGateways.Count);
 
             cachedLiveGateways = knownGateways;
 
             lastRefreshTime = DateTime.UtcNow;
             if (ListProvider.IsUpdatable)
             {
-                gatewayRefreshTimer = new SafeTimer(this.loggerFactory.CreateLogger<SafeTimer>(), RefreshSnapshotLiveGateways_TimerCallback, null, config.GatewayListRefreshPeriod, config.GatewayListRefreshPeriod);
+                gatewayRefreshTimer = new SafeTimer(this.loggerFactory.CreateLogger<SafeTimer>(), RefreshSnapshotLiveGateways_TimerCallback, null, this.gatewayOptions.GatewayListRefreshPeriod, this.gatewayOptions.GatewayListRefreshPeriod);
             }
         }
 
@@ -197,9 +197,9 @@ namespace Orleans.Messaging
 
                 // the listProvider.GetGateways() is not under lock.
                 var currentKnownGateways = ListProvider.GetGateways().GetResult();
-                if (logger.IsVerbose)
+                if (logger.IsEnabled(LogLevel.Debug))
                 {
-                    logger.Verbose("Found {0} knownGateways from Gateway listProvider {1}", currentKnownGateways.Count, Utils.EnumerableToString(currentKnownGateways));
+                    logger.Debug("Found {0} knownGateways from Gateway listProvider {1}", currentKnownGateways.Count, Utils.EnumerableToString(currentKnownGateways));
                 }
 
                 // the next one will grab the lock.
@@ -220,28 +220,50 @@ namespace Orleans.Messaging
                 // now take whatever listProvider gave us and exclude those we think are dead.
 
                 var live = new List<Uri>();
+                var now = DateTime.UtcNow;
 
                 var knownGateways = currentKnownGateways as IList<Uri> ?? currentKnownGateways.ToList();
                 foreach (Uri trial in knownGateways)
                 {
-                    DateTime diedAt;
                     // We consider a node to be dead if we recorded it is dead due to socket error
                     // and it was recorded (diedAt) not too long ago (less than maxStaleness ago).
                     // The latter is to cover the case when the Gateway provider returns an outdated list that does not yet reflect the actually recently died Gateway.
                     // If it has passed more than maxStaleness - we assume maxStaleness is the upper bound on Gateway provider freshness.
-                    bool isDead = knownDead.TryGetValue(trial, out diedAt) && DateTime.UtcNow.Subtract(diedAt) < maxStaleness;
+                    var isDead = false;
+                    if (knownDead.TryGetValue(trial, out var diedAt))
+                    {
+                        if (now.Subtract(diedAt) < maxStaleness)
+                        {
+                            isDead = true;
+                        }
+                        else
+                        {
+                            // Remove stale entries.
+                            knownDead.Remove(trial);
+                        }
+                    }
+
                     if (!isDead)
                     {
                         live.Add(trial);
                     }
                 }
 
+                if (live.Count == 0)
+                {
+                    logger.Warn(
+                        ErrorCode.GatewayManager_AllGatewaysDead,
+                        "All gateways have previously been marked as dead. Clearing the list of dead gateways to expedite reconnection.");
+                    live.AddRange(knownGateways);
+                    knownDead.Clear();
+                }
+
                 // swap cachedLiveGateways pointer in one atomic operation
                 cachedLiveGateways = live;
 
                 DateTime prevRefresh = lastRefreshTime;
-                lastRefreshTime = DateTime.UtcNow;
-                if (logger.IsInfo)
+                lastRefreshTime = now;
+                if (logger.IsEnabled(LogLevel.Information))
                 {
                     logger.Info(ErrorCode.GatewayManager_FoundKnownGateways,
                             "Refreshed the live Gateway list. Found {0} gateways from Gateway listProvider: {1}. Picked only known live out of them. Now has {2} live Gateways: {3}. Previous refresh time was = {4}",

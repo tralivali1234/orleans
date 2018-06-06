@@ -1,7 +1,8 @@
-﻿
+
 using System;
 using System.Threading.Tasks;
 using Orleans;
+using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.Streams;
 using Orleans.TestingHost;
@@ -17,11 +18,17 @@ namespace UnitTests.StreamingTests
 
         public class Fixture : BaseTestClusterFixture
         {
-            protected override TestCluster CreateTestCluster()
+            protected override void ConfigureTestCluster(TestClusterBuilder builder)
             {
-                var options = new TestClusterOptions(2);
-                options.ClusterConfiguration.AddFaultyMemoryStorageProvider("PubSubStore");
-                return new TestCluster(options);
+               builder.AddSiloBuilderConfigurator<SiloHostConfigurator>();
+            }
+
+            public class SiloHostConfigurator : ISiloBuilderConfigurator
+            {
+                public void Configure(ISiloHostBuilder hostBuilder)
+                {
+                    hostBuilder.AddFaultInjectionMemoryStorage("PubSubStore");
+                }
             }
         }
 

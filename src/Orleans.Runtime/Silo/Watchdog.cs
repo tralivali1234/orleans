@@ -3,23 +3,25 @@ using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 
+
 namespace Orleans.Runtime
 {
-    internal class Watchdog : SingleTaskAsynchAgent
+
+    internal class Watchdog : DedicatedAsynchAgent
     {
         private static readonly TimeSpan heartbeatPeriod = TimeSpan.FromMilliseconds(1000);
         private readonly TimeSpan healthCheckPeriod;
         private DateTime lastHeartbeat;
         private DateTime lastWatchdogCheck;
         private readonly List<IHealthCheckParticipant> participants;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private readonly CounterStatistic watchdogChecks;
         private CounterStatistic watchdogFailedChecks;
 
         public Watchdog(TimeSpan watchdogPeriod, List<IHealthCheckParticipant> watchables, ExecutorService executorService, ILoggerFactory loggerFactory)
             :base(executorService, loggerFactory)
         {
-            logger = new LoggerWrapper<Watchdog>(loggerFactory);
+            logger = loggerFactory.CreateLogger<Watchdog>();
             healthCheckPeriod = watchdogPeriod;
             participants = watchables;
             watchdogChecks = CounterStatistic.FindOrCreate(StatisticNames.WATCHDOG_NUM_HEALTH_CHECKS);
@@ -99,7 +101,7 @@ namespace Orleans.Runtime
             lastWatchdogCheck = DateTime.UtcNow;
         }
 
-        private static void CheckYourOwnHealth(DateTime lastCheckt, Logger logger)
+        private static void CheckYourOwnHealth(DateTime lastCheckt, ILogger logger)
         {
             var timeSinceLastTick = (DateTime.UtcNow - lastCheckt);
             if (timeSinceLastTick > heartbeatPeriod.Multiply(2))

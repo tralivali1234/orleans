@@ -5,7 +5,7 @@ using Orleans.Runtime.Scheduler;
 
 namespace Orleans.Runtime.Messaging
 {
-    internal class IncomingMessageAgent : SingleTaskAsynchAgent
+    internal class IncomingMessageAgent : DedicatedAsynchAgent
     {
         private readonly IMessageCenter messageCenter;
         private readonly ActivationDirectory directory;
@@ -32,40 +32,59 @@ namespace Orleans.Runtime.Messaging
             this.dispatcher = dispatcher;
             this.messageFactory = messageFactory;
             OnFault = FaultBehavior.RestartOnFault;
+            messageCenter.RegisterLocalMessageHandler(cat, ReceiveMessage);
         }
 
         public override void Start()
         {
             base.Start();
-            if (Log.IsVerbose3) Log.Verbose3("Started incoming message agent for silo at {0} for {1} messages", messageCenter.MyAddress, category);
+            if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Started incoming message agent for silo at {0} for {1} messages", messageCenter.MyAddress, category);
         }
 
         protected override void Run()
         {
-            CancellationToken ct = Cts.Token;
-            while (true)
+            try
             {
-                // Get an application message
-                var msg = messageCenter.WaitMessage(category, ct);
-                if (msg == null)
-                {
-                    if (Log.IsVerbose) Log.Verbose("Dequeued a null message, exiting");
-                    // Null return means cancelled
-                    break;
-                }
-
 #if TRACK_DETAILED_STATS
                 if (StatisticsCollector.CollectThreadTimeTrackingStats)
                 {
-                    threadTracking.OnStartProcessing();
+                    threadTracking.OnStartExecution();
                 }
 #endif
-                ReceiveMessage(msg);
+                CancellationToken ct = Cts.Token;
+                while (true)
+                {
+                    // Get an application message
+                    var msg = messageCenter.WaitMessage(category, ct);
+                    if (msg == null)
+                    {
+                        if (Log.IsEnabled(LogLevel.Debug)) Log.Debug("Dequeued a null message, exiting");
+                        // Null return means cancelled
+                        break;
+                    }
+
+ #if TRACK_DETAILED_STATS
+                    if (StatisticsCollector.CollectThreadTimeTrackingStats)
+                    {
+                        threadTracking.OnStartProcessing();
+                    }
+ #endif
+                    ReceiveMessage(msg);
+ #if TRACK_DETAILED_STATS
+                    if (StatisticsCollector.CollectThreadTimeTrackingStats)
+                    {
+                        threadTracking.OnStopProcessing();
+                        threadTracking.IncrementNumberOfProcessed();
+                    }
+ #endif
+                }
+            }
+            finally
+            {
 #if TRACK_DETAILED_STATS
                 if (StatisticsCollector.CollectThreadTimeTrackingStats)
                 {
-                    threadTracking.OnStopProcessing();
-                    threadTracking.IncrementNumberOfProcessed();
+                    threadTracking.OnStopExecution();
                 }
 #endif
             }
@@ -118,12 +137,16 @@ namespace Orleans.Runtime.Messaging
                         var target = targetActivation; // to avoid a warning about nulling targetActivation under a lock on it
                         if (target.State == ActivationState.Valid)
                         {
-                            var overloadException = target.CheckOverloaded(Log);
-                            if (overloadException != null)
+                            // Response messages are not subject to overload checks.
+                            if (msg.Direction != Message.Directions.Response)
                             {
-                                // Send rejection as soon as we can, to avoid creating additional work for runtime
-                                dispatcher.RejectMessage(msg, Message.RejectionTypes.Overloaded, overloadException, "Target activation is overloaded " + target);
-                                return;
+                                var overloadException = target.CheckOverloaded(Log);
+                                if (overloadException != null)
+                                {
+                                    // Send rejection as soon as we can, to avoid creating additional work for runtime
+                                    dispatcher.RejectMessage(msg, Message.RejectionTypes.Overloaded, overloadException, "Target activation is overloaded " + target);
+                                    return;
+                                }
                             }
 
                             // Run ReceiveMessage in context of target activation

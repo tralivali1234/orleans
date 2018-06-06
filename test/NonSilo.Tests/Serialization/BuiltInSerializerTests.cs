@@ -1,22 +1,25 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Net;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Orleans;
-using Orleans.CodeGeneration;
 using Orleans.Concurrency;
+using Orleans.GrainDirectory;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
+using Orleans.Runtime.GrainDirectory;
 using Orleans.Serialization;
 using Orleans.ServiceBus.Providers;
 using Orleans.Streams;
 using TestExtensions;
+using TestGrainInterfaces;
 using UnitTests.GrainInterfaces;
 using UnitTests.Grains;
 using Xunit;
@@ -26,12 +29,6 @@ using Xunit.Abstractions;
 
 namespace UnitTests.Serialization
 {
-    using System.Reflection;
-
-    using Orleans.GrainDirectory;
-    using Orleans.Runtime.GrainDirectory;
-
-    using TestGrainInterfaces;
     public class BuiltInSerializerCollectionFixture
     {
         public ConcurrentDictionary<BuiltInSerializerTests.SerializerToUse, SerializationTestEnvironment> Environments { get; } =
@@ -500,6 +497,10 @@ namespace UnitTests.Serialization
             var source4 = new byte[] { 1, 3, 5 };
             deserialized = OrleansSerializationLoop(environment.SerializationManager, source4);
             ValidateArray<byte>(source4, deserialized, "byte");
+
+            var source5 = Enumerable.Repeat(3, (environment.SerializationManager.LargeObjectSizeThreshold / sizeof(int)) + 1).ToArray();
+            deserialized = OrleansSerializationLoop(environment.SerializationManager, source5);
+            ValidateArray<int>(source5, deserialized, "int");
         }
 
         [Theory, TestCategory("Functional")]
@@ -797,7 +798,7 @@ namespace UnitTests.Serialization
             GrainReference input = environment.InternalGrainFactory.GetGrain(grainId);
             Assert.True(input.IsBound);
 
-            object deserialized = DotNetSerializationLoop(input, environment.SerializationManager, environment.GrainFactory);
+            object deserialized = DotNetSerializationLoop(input, environment.SerializationManager);
             var grainRef = Assert.IsAssignableFrom<GrainReference>(deserialized); //GrainReference copied as wrong type
             Assert.True(grainRef.IsBound);
             Assert.Equal(grainId, grainRef.GrainId); //GrainId different after copy
@@ -815,7 +816,7 @@ namespace UnitTests.Serialization
             // Expected exception:
             // System.Runtime.Serialization.SerializationException: Type 'Echo.Grains.EchoTaskGrain' in Assembly 'UnitTestGrains, Version=1.0.0.0, Culture=neutral, PublicKeyToken=070f47935e3ed133' is not marked as serializable.
 
-            var exc = Assert.Throws<SerializationException>(() => DotNetSerializationLoop(input, environment.SerializationManager, environment.GrainFactory));
+            var exc = Assert.Throws<SerializationException>(() => DotNetSerializationLoop(input, environment.SerializationManager));
 
             Assert.Contains("is not marked as serializable", exc.Message);
         }
@@ -920,7 +921,7 @@ namespace UnitTests.Serialization
             public int AnotherValueType;
         }
 
-        internal object OrleansSerializationLoop(SerializationManager serializationManager, object input, bool includeWire = true)
+        internal static object OrleansSerializationLoop(SerializationManager serializationManager, object input, bool includeWire = true)
         {
             var copy = serializationManager.DeepCopy(input);
             if (includeWire)
@@ -930,7 +931,7 @@ namespace UnitTests.Serialization
             return copy;
         }
 
-        private object DotNetSerializationLoop(object input, SerializationManager serializationManager, IGrainFactory grainFactory)
+        internal static object DotNetSerializationLoop(object input, SerializationManager serializationManager)
         {
             byte[] bytes;
             object deserialized;
@@ -1166,8 +1167,7 @@ namespace UnitTests.Serialization
 
             var result2 = (SimpleISerializableObject)DotNetSerializationLoop(
                 input2,
-                environment.SerializationManager,
-                environment.GrainFactory);
+                environment.SerializationManager);
 
             Assert.Equal(input2.History, input.History);
             Assert.Equal(result2.History, result.History);
@@ -1207,8 +1207,7 @@ namespace UnitTests.Serialization
 
             var result2 = (SimpleISerializableStruct)DotNetSerializationLoop(
                 input2,
-                environment.SerializationManager,
-                environment.GrainFactory);
+                environment.SerializationManager);
 
             Assert.Equal(input2.History, input.History);
             Assert.Equal(result2.History, result.History);

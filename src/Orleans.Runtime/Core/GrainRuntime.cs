@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Orleans.Configuration;
 using Orleans.Core;
-using Orleans.Runtime.Configuration;
-using Orleans.Streams;
 using Orleans.Timers;
 using Orleans.Storage;
 
@@ -12,8 +12,10 @@ namespace Orleans.Runtime
     {
         private readonly ISiloRuntimeClient runtimeClient;
         private readonly ILoggerFactory loggerFactory;
+        private readonly ILogger logger;
+
         public GrainRuntime(
-            GlobalConfiguration globalConfig,
+            IOptions<ClusterOptions> clusterOptions,
             ILocalSiloDetails localSiloDetails,
             IGrainFactory grainFactory,
             ITimerRegistry timerRegistry,
@@ -22,8 +24,9 @@ namespace Orleans.Runtime
             ISiloRuntimeClient runtimeClient,
             ILoggerFactory loggerFactory)
         {
+            this.logger = loggerFactory.CreateLogger<GrainRuntime>();
             this.runtimeClient = runtimeClient;
-            ServiceId = globalConfig.ServiceId;
+            ServiceId = clusterOptions.Value.ServiceId;
             SiloAddress = localSiloDetails.SiloAddress;
             SiloIdentity = SiloAddress.ToLongString();
             GrainFactory = grainFactory;
@@ -33,7 +36,7 @@ namespace Orleans.Runtime
             this.loggerFactory = loggerFactory;
         }
 
-        public Guid ServiceId { get; }
+        public string ServiceId { get; }
 
         public string SiloIdentity { get; }
 
@@ -47,11 +50,6 @@ namespace Orleans.Runtime
 
         public IServiceProvider ServiceProvider { get; }
 
-        public Logger GetLogger(string loggerName)
-        {
-            return new LoggerWrapper(loggerName, this.loggerFactory);
-        }
-
         public void DeactivateOnIdle(Grain grain)
         {
             this.runtimeClient.DeactivateOnIdle(grain.Data.ActivationId);
@@ -64,9 +62,9 @@ namespace Orleans.Runtime
 
         public IStorage<TGrainState> GetStorage<TGrainState>(Grain grain) where TGrainState : new()
         {
-            IStorageProvider storageProvider = grain.GetStorageProvider(ServiceProvider);
+            IGrainStorage grainStorage = grain.GetGrainStorage(ServiceProvider);
             string grainTypeName = grain.GetType().FullName;
-            return new StateStorageBridge<TGrainState>(grainTypeName, grain.GrainReference, storageProvider);
+            return new StateStorageBridge<TGrainState>(grainTypeName, grain.GrainReference, grainStorage, this.loggerFactory);
         }
     }
 }

@@ -1,8 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.TestingHost;
@@ -26,7 +27,7 @@ namespace UnitTests.MembershipTests
 
         protected async Task Do_Liveness_OracleTest_1()
         {
-            output.WriteLine("ClusterId= {0}", this.HostedCluster.ClusterId);
+            output.WriteLine("ClusterId= {0}", this.HostedCluster.Options.ClusterId);
 
             SiloHandle silo3 = this.HostedCluster.StartAdditionalSilo();
 
@@ -69,7 +70,7 @@ namespace UnitTests.MembershipTests
 
         protected async Task Do_Liveness_OracleTest_2(int silo2Kill, bool restart = true, bool startTimers = false)
         {
-            this.HostedCluster.StartAdditionalSilos(numAdditionalSilos);
+            await this.HostedCluster.StartAdditionalSilos(numAdditionalSilos);
             await this.HostedCluster.WaitForLivenessToStabilizeAsync();
 
             for (int i = 0; i < numGrains; i++)
@@ -77,11 +78,7 @@ namespace UnitTests.MembershipTests
                 await SendTraffic(i + 1, startTimers);
             }
 
-            SiloHandle silo2KillHandle;
-            if (silo2Kill == 0)
-                silo2KillHandle = this.HostedCluster.Primary;
-            else
-                silo2KillHandle = this.HostedCluster.SecondarySilos[silo2Kill - 1];
+            SiloHandle silo2KillHandle = this.HostedCluster.Silos[silo2Kill];
 
             logger.Info("\n\n\n\nAbout to kill {0}\n\n\n", silo2KillHandle.SiloAddress.Endpoint);
 
@@ -109,7 +106,7 @@ namespace UnitTests.MembershipTests
 
         protected async Task Do_Liveness_OracleTest_3()
         {
-            var moreSilos = this.HostedCluster.StartAdditionalSilos(1);
+            var moreSilos = await this.HostedCluster.StartAdditionalSilos(1);
             await this.HostedCluster.WaitForLivenessToStabilizeAsync();
 
             await TestTraffic();
@@ -121,6 +118,7 @@ namespace UnitTests.MembershipTests
             await TestTraffic();
 
             logger.Info("\n\n\n\nAbout to re-start a first silo.\n\n\n");
+            
             this.HostedCluster.RestartStoppedSecondarySilo(siloToStop.Name);
 
             await TestTraffic();
@@ -168,7 +166,7 @@ namespace UnitTests.MembershipTests
             }
         }
 
-        private async Task LogGrainIdentity(Logger logger, ILivenessTestGrain grain)
+        private async Task LogGrainIdentity(ILogger logger, ILivenessTestGrain grain)
         {
             logger.Info("Grain {0}, activation {1} on {2}",
                 await grain.GetGrainReference(),
@@ -183,11 +181,12 @@ namespace UnitTests.MembershipTests
         {
         }
 
-        public override TestCluster CreateTestCluster()
+        protected override void ConfigureTestCluster(TestClusterBuilder builder)
         {
-            var options = new TestClusterOptions(2);
-            options.ClientConfiguration.PreferedGatewayIndex = 1;
-            return new TestCluster(options);
+            builder.ConfigureLegacyConfiguration(legacy =>
+            {
+                legacy.ClientConfiguration.PreferedGatewayIndex = 1;
+            });
         }
 
         [Fact, TestCategory("Functional"), TestCategory("Membership")]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 using Orleans.Concurrency;
@@ -22,6 +23,17 @@ namespace Orleans.CodeGeneration
                 : base(message)
             {
                 Violations = violations;
+            }
+
+            protected RulesViolationException(SerializationInfo info, StreamingContext context) : base(info, context)
+            {
+                this.Violations = info.GetValue(nameof(Violations), typeof(List<string>)) as List<string>;
+            }
+
+            public override void GetObjectData(SerializationInfo info, StreamingContext context)
+            {
+                base.GetObjectData(info, context);
+                info.AddValue(nameof(Violations), this.Violations);
             }
 
             public List<string> Violations { get; private set; }
@@ -67,8 +79,19 @@ namespace Orleans.CodeGeneration
         public static bool IsTaskType(Type t)
         {
             var typeInfo = t.GetTypeInfo();
-            return t == typeof (Task)
-                || (typeInfo.IsGenericType && typeInfo.GetGenericTypeDefinition().FullName == "System.Threading.Tasks.Task`1");
+            if (t == typeof(Task))
+            {
+                return true;
+            }
+
+            if (typeInfo.IsGenericType)
+            {
+                var typeName = typeInfo.GetGenericTypeDefinition().FullName;
+                return typeName == "System.Threading.Tasks.Task`1" 
+                       || typeName == "System.Threading.Tasks.ValueTask`1";
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -95,13 +118,6 @@ namespace Orleans.CodeGeneration
                     i => i.GetTypeInfo().GetCustomAttributes(typeof(UnorderedAttribute), true).Any() 
                         && declaringTypeInfo.GetRuntimeInterfaceMap(i).TargetMethods.Contains(methodInfo)))
                 || IsStatelessWorker(methodInfo);
-        }
-
-        public static bool IsStatelessWorker(TypeInfo grainTypeInfo)
-        {
-            return grainTypeInfo.GetCustomAttributes(typeof(StatelessWorkerAttribute), true).Any() ||
-                grainTypeInfo.GetInterfaces()
-                    .Any(i => i.GetTypeInfo().GetCustomAttributes(typeof(StatelessWorkerAttribute), true).Any());
         }
 
         public static bool IsStatelessWorker(MethodInfo methodInfo)

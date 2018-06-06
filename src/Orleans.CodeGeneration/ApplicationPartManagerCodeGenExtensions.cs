@@ -1,4 +1,7 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using System;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Orleans.ApplicationParts;
 using Orleans.CodeGenerator;
 using Orleans.Metadata;
@@ -16,9 +19,12 @@ namespace Orleans.Hosting
         /// Generates support code for the the provided assembly and adds it to the builder.
         /// </summary>
         /// <param name="manager">The builder.</param>
+        /// <param name="loggerFactory">The optional logger factory, for outputting code generation diagnostics.</param>
         /// <returns>A builder with support parts added.</returns>
-        public static IApplicationPartManagerWithAssemblies WithCodeGeneration(this IApplicationPartManagerWithAssemblies manager)
+        public static IApplicationPartManagerWithAssemblies WithCodeGeneration(this IApplicationPartManagerWithAssemblies manager, ILoggerFactory loggerFactory = null)
         {
+            var stopWatch = Stopwatch.StartNew();
+            loggerFactory = loggerFactory ?? new NullLoggerFactory();
             var tempPartManager = new ApplicationPartManager();
             foreach (var provider in manager.FeatureProviders)
             {
@@ -36,9 +42,11 @@ namespace Orleans.Hosting
             tempPartManager.AddFeatureProvider(new AssemblyAttributeFeatureProvider<SerializerFeature>());
             tempPartManager.AddFeatureProvider(new BuiltInTypesSerializationFeaturePopulator());
             
-            var codeGenerator = new RoslynCodeGenerator(tempPartManager, new NullLoggerFactory());
+            var codeGenerator = new RoslynCodeGenerator(tempPartManager, loggerFactory);
             var generatedAssembly = codeGenerator.GenerateAndLoadForAssemblies(manager.Assemblies);
-
+            stopWatch.Stop();
+            var logger = loggerFactory.CreateLogger("RuntimeCodeGen");
+            logger?.LogInformation(0, $"Runtime code generation for assemblies {String.Join(",", manager.Assemblies.ToStrings())} took {stopWatch.ElapsedMilliseconds} milliseconds");
             return manager.AddApplicationPart(generatedAssembly);
         }
     }

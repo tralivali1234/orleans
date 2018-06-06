@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Orleans;
 using Orleans.Runtime;
+using Orleans.Runtime.Configuration;
 using Orleans.TestingHost;
 using TestExtensions;
 using UnitTests.GrainInterfaces;
@@ -17,10 +18,12 @@ namespace UnitTests.General
 
         public class Fixture : BaseTestClusterFixture
         {
-            protected override TestCluster CreateTestCluster()
+            protected override void ConfigureTestCluster(TestClusterBuilder builder)
             {
-                var options = new TestClusterOptions(1);
-                return new TestCluster(options);
+                builder.Options.InitialSilosCount = 1;
+                builder.ConfigureLegacyConfiguration(
+                    config => config.ClusterConfiguration.ApplyToAllNodes(
+                        nodeConfig => nodeConfig.LoadSheddingEnabled = true));
             }
         }
         public LoadSheddingTest(Fixture fixture)

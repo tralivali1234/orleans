@@ -1,4 +1,4 @@
-﻿//#define REREAD_STATE_AFTER_WRITE_FAILED
+//#define REREAD_STATE_AFTER_WRITE_FAILED
 
 using System;
 using System.Collections.Generic;
@@ -16,6 +16,7 @@ using Xunit.Abstractions;
 using Orleans.Runtime.Configuration;
 using TesterInternal;
 using TestExtensions;
+using Orleans.Hosting;
 
 // ReSharper disable RedundantAssignment
 // ReSharper disable UnusedVariable
@@ -31,16 +32,26 @@ namespace UnitTests.StorageTests
         public class Fixture : BaseTestClusterFixture
         {
 
-            protected override TestCluster CreateTestCluster()
+            protected override void ConfigureTestCluster(TestClusterBuilder builder)
             {
-                var options = new TestClusterOptions(initialSilosCount: 1);
-                options.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderName1);
-                options.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderName2, new Dictionary<string, string> { { "Config1", "1" }, { "Config2", "2" } });
-                options.ClusterConfiguration.Globals.RegisterStorageProvider<ErrorInjectionStorageProvider>(ErrorInjectorProviderName);
-                options.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderNameLowerCase);
-                options.ClusterConfiguration.AddMemoryStorageProvider("MemoryStore");
+                builder.Options.InitialSilosCount = 1;
+                builder.ConfigureLegacyConfiguration(legacy =>
+                {
+                    legacy.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderName1);
+                    legacy.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderName2,
+                        new Dictionary<string, string> {{"Config1", "1"}, {"Config2", "2"}});
+                    legacy.ClusterConfiguration.Globals.RegisterStorageProvider<ErrorInjectionStorageProvider>(ErrorInjectorProviderName);
+                    legacy.ClusterConfiguration.Globals.RegisterStorageProvider<MockStorageProvider>(MockStorageProviderNameLowerCase);
+                });
+                builder.AddSiloBuilderConfigurator<SiloConfigurator>();
+            }
 
-                return new TestCluster(options);
+            private class SiloConfigurator : ISiloBuilderConfigurator
+            {
+                public void Configure(ISiloHostBuilder hostBuilder)
+                {
+                    hostBuilder.AddMemoryGrainStorage("MemoryStore");
+                }
             }
         }
 
@@ -987,7 +998,7 @@ namespace UnitTests.StorageTests
         public async Task Persistence_Grain_BadProvider()
         {
             IBadProviderTestGrain grain = this.HostedCluster.GrainFactory.GetGrain<IBadProviderTestGrain>(Guid.NewGuid());
-            var oex = await Assert.ThrowsAsync<BadProviderConfigException>(() => grain.DoSomething());
+            var oex = await Assert.ThrowsAsync<BadGrainStorageConfigException>(() => grain.DoSomething());
         }
 
         [Fact, TestCategory("Functional"), TestCategory("Persistence")]

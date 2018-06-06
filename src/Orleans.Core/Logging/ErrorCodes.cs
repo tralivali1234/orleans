@@ -338,7 +338,7 @@ namespace Orleans
         Runtime_Error_100329 = Runtime + 329,
         Runtime_Error_100330 = Runtime + 330,
         Runtime_Error_100331 = Runtime + 331,
-
+        
         SiloBase                        = Runtime + 400,
         SiloStarting                    = SiloBase + 1,
         SiloStarted                     = SiloBase + 2,
@@ -390,8 +390,10 @@ namespace Orleans
         SiloShutdownEventFailure        = SiloBase + 49,
         LifecycleStartFailure           = SiloBase + 50,
         LifecycleStopFailure            = SiloBase + 51,
+        SiloStartPerfMeasure            = SiloBase + 52,
+        LifecycleStagesReport           = SiloBase + 53,
 
-        CatalogBase                     = Runtime + 500,
+        CatalogBase = Runtime + 500,
         CatalogNonExistingActivation1   = CatalogBase + 1,
         Catalog_UnregisterManyAsync     = CatalogBase + 2,
         Catalog_DestroyActivations       = CatalogBase + 3,
@@ -645,7 +647,7 @@ namespace Orleans
         WaitCalledInsideGrain                   = SchedulerBase + 9,
         SchedulerStatus                         = SchedulerBase + 10,
         WaitCalledInServerCode                  = SchedulerBase + 11,
-        SchedulerTurnTooLong                    = SchedulerBase + 12,
+        ExecutorTurnTooLong                     = SchedulerBase + 12,
         SchedulerTooManyPendingItems            = SchedulerBase + 13,
         SchedulerTurnTooLong2                   = SchedulerBase + 14,
         SchedulerTurnTooLong3                   = SchedulerBase + 15,
@@ -663,9 +665,10 @@ namespace Orleans
         SchedulerTaskExecuteIncomplete3         = SchedulerBase + 27,
         SchedulerTaskExecuteIncomplete4         = SchedulerBase + 28,
         SchedulerTaskWaitIncomplete             = SchedulerBase + 29,
-        SchedulerWorkerThreadExc                = SchedulerBase + 30,
+        ExecutorWorkerThreadExc                 = SchedulerBase + 30,
         SchedulerQueueWorkItemWrongContext      = SchedulerBase + 31,
         SchedulerAppTurnsStopped_2              = SchedulerBase + 32,
+        ExecutorProcessingError                 = SchedulerBase + 33,
 
         GatewayBase                             = Runtime + 1300,
         GatewayClientOpenedSocket               = GatewayBase + 1,
@@ -688,6 +691,8 @@ namespace Orleans
         ClientRegistrarFailedToUnregister       = GatewayBase + 18,
         ClientRegistrarTimerFailed              = GatewayBase + 19,
         GatewayAcceptor_WrongClusterId          = GatewayBase + 20,
+        GatewayManager_AllGatewaysDead          = GatewayBase + 21,
+        GatewayAcceptor_InvalidSize             = GatewayBase + 22,
 
         TimerBase                               = Runtime + 1400,
         TimerChangeError                        = PerfCounterTimerError, // Backward compatability
@@ -834,7 +839,6 @@ namespace Orleans
         Watchdog_HealthCheckFailure             = WatchdogBase + 3,
 
         LoggerBase                              = Runtime + 2700,
-        Logger_MiniDumpCreated                  = Runtime_Error_100001, // Backward compatability
         Logger_ProcessCrashing                  = Runtime_Error_100002, // Backward compatability
         Logger_LogMessageTruncated              = LoggerBase + 1,
 
@@ -914,23 +918,7 @@ namespace Orleans
         Provider_ProviderNotControllable        = ProviderManagerBase + 16,
         Provider_CatalogNoLogConsistencyProvider       = ProviderManagerBase + 17,
         Provider_CatalogLogConsistencyProviderAllocated = ProviderManagerBase + 18,
-
-        AzureQueueBase = Runtime + 3200,
-        AzureQueue_01 = AzureQueueBase + 1,
-        AzureQueue_02 = AzureQueueBase + 2,
-        AzureQueue_03 = AzureQueueBase + 3,
-        AzureQueue_04 = AzureQueueBase + 4,
-        AzureQueue_05 = AzureQueueBase + 5,
-        AzureQueue_06 = AzureQueueBase + 6,
-        AzureQueue_07 = AzureQueueBase + 7,
-        AzureQueue_08 = AzureQueueBase + 8,
-        AzureQueue_09 = AzureQueueBase + 9,
-        AzureQueue_10 = AzureQueueBase + 10,
-        AzureQueue_11 = AzureQueueBase + 11,
-        AzureQueue_12 = AzureQueueBase + 12,
-        AzureQueue_13 = AzureQueueBase + 13,
-        AzureQueue_14 = AzureQueueBase + 14,
-        AzureQueue_15 = AzureQueueBase + 15,
+        Provider_ErrorFromClose                  = ProviderManagerBase + 19,
 
         PersistentStreamPullingAgentBase = Runtime + 3300,
         PersistentStreamPullingAgent_01 = PersistentStreamPullingAgentBase + 1,
@@ -1036,6 +1024,7 @@ namespace Orleans
 
         TypeManagerBase = Runtime + 4200,
         TypeManager_GetSiloGrainInterfaceMapError = TypeManagerBase + 1,
+        TypeManager_GetClusterGrainTypeResolverError = TypeManagerBase + 2,
 
         LogConsistencyBase = Runtime + 4300,
         LogConsistency_UserCodeException = LogConsistencyBase + 1,

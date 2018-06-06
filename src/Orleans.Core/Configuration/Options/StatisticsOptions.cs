@@ -1,46 +1,34 @@
-﻿using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
 using System;
+using Orleans.Runtime.Configuration;
 
-namespace Orleans.Hosting
+namespace Orleans.Configuration
 {
     /// <summary>
     /// The StatisticsOptions type contains various statistics output related options.
     /// </summary>
     public class StatisticsOptions
     {
-        /// <summary>
-        /// The MetricsTableWriteInterval property specifies the frequency of updating the metrics in Azure table.
-        ///  The default is 30 seconds.
-        /// </summary>
-        public TimeSpan MetricsTableWriteInterval { get; set; } = TimeSpan.FromSeconds(30);
+        internal const bool TRACK_DETAILED_STATS = false;
 
         /// <summary>
         /// The PerfCounterWriteInterval property specifies the frequency of updating the windows performance counters.
         /// The default is 30 seconds.
         /// </summary>
-        public TimeSpan PerfCountersWriteInterval { get; set; } = Constants.INFINITE_TIMESPAN;
+        public TimeSpan PerfCountersWriteInterval { get; set; } = DEFAULT_PERF_COUNTERS_WRITE_PERIOD;
+        public static readonly TimeSpan DEFAULT_PERF_COUNTERS_WRITE_PERIOD = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// The LogWriteInterval property specifies the frequency of updating the statistics in the log file.
         /// The default is 5 minutes.
         /// </summary>
-        public TimeSpan LogWriteInterval { get; set; } = TimeSpan.FromMinutes(5);
-
-        /// <summary>
-        /// The WriteLogStatisticsToTable property specifies whether log statistics should also be written into a separate, special Azure table.
-        ///  The default is yes.
-        /// </summary>
-        public bool WriteLogStatisticsToTable { get; set; } = true;
+        public TimeSpan LogWriteInterval { get; set; } = DEFAULT_LOG_WRITE_PERIOD;
+        public static readonly TimeSpan DEFAULT_LOG_WRITE_PERIOD = TimeSpan.FromMinutes(5);
+        
 
         /// <summary>
         /// The CollectionLevel property specifies the verbosity level of statistics to collect. The default is Info.
         /// </summary>
-        public StatisticsLevel CollectionLevel { get; set; } = StatisticsLevel.Info;
-
-        /// <summary>
-        /// The ProviderName property specifies the name of the configured statistics provider.
-        /// </summary>
-        public string ProviderName { get; set; }
+        public StatisticsLevel CollectionLevel { get; set; } = DEFAULT_COLLECTION_LEVEL;
+        public static readonly StatisticsLevel DEFAULT_COLLECTION_LEVEL = StatisticsLevel.Info;
     }
 }

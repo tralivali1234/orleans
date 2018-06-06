@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
-using Orleans.Runtime;
-using Orleans.Runtime.Configuration;
-using Orleans.Streams;
+using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Orleans.Configuration;
+using Orleans.Runtime;
+using Orleans.Streams;
 
 namespace Orleans
 {
@@ -14,9 +18,9 @@ namespace Orleans
     internal class ClusterClient : IInternalClusterClient
     {
         private readonly OutsideRuntimeClient runtimeClient;
+        private readonly ClusterClientLifecycle clusterClientLifecycle;
         private readonly AsyncLock initLock = new AsyncLock();
         private LifecycleState state = LifecycleState.Created;
-        private readonly LoggerWrapper appLogger;
 
         private enum LifecycleState
         {
@@ -32,15 +36,31 @@ namespace Orleans
         /// Initializes a new instance of the <see cref="ClusterClient"/> class.
         /// </summary>
         /// <param name="runtimeClient">The runtime client.</param>
-        /// <param name="configuration">The client configuration.</param>
         /// <param name="loggerFactory">Logger factory used to create loggers</param>
-        public ClusterClient(OutsideRuntimeClient runtimeClient, ClientConfiguration configuration, ILoggerFactory loggerFactory)
+        /// <param name="clientMessagingOptions">Messaging parameters</param>
+        public ClusterClient(OutsideRuntimeClient runtimeClient, ILoggerFactory loggerFactory, IOptions<ClientMessagingOptions> clientMessagingOptions)
         {
-            this.Configuration = configuration;
             this.runtimeClient = runtimeClient;
+            this.clusterClientLifecycle = new ClusterClientLifecycle(loggerFactory.CreateLogger<LifecycleSubject>());
+
             //set PropagateActivityId flag from node cofnig
-            RequestContext.PropagateActivityId = configuration.PropagateActivityId;
-            this.appLogger = new LoggerWrapper("Application", loggerFactory);
+            RequestContext.PropagateActivityId = clientMessagingOptions.Value.PropagateActivityId;
+
+            // register all lifecycle participants
+            IEnumerable<ILifecycleParticipant<IClusterClientLifecycle>> lifecycleParticipants = this.ServiceProvider.GetServices<ILifecycleParticipant<IClusterClientLifecycle>>();
+            foreach (ILifecycleParticipant<IClusterClientLifecycle> participant in lifecycleParticipants)
+            {
+                participant?.Participate(clusterClientLifecycle);
+            }
+
+            // register all named lifecycle participants
+            IKeyedServiceCollection<string, ILifecycleParticipant<IClusterClientLifecycle>> namedLifecycleParticipantCollections = this.ServiceProvider.GetService<IKeyedServiceCollection<string, ILifecycleParticipant<IClusterClientLifecycle>>>();
+            foreach (ILifecycleParticipant<IClusterClientLifecycle> participant in namedLifecycleParticipantCollections
+                ?.GetServices(this.ServiceProvider)
+                ?.Select(s => s?.GetService(this.ServiceProvider)))
+            {
+                participant?.Participate(clusterClientLifecycle);
+            }
         }
 
         /// <inheritdoc />
@@ -50,20 +70,7 @@ namespace Orleans
         public IGrainFactory GrainFactory => this.InternalGrainFactory;
 
         /// <inheritdoc />
-        public Logger Logger
-        {
-            get
-            {
-                this.ThrowIfDisposedOrNotInitialized();
-                return this.appLogger;
-            }
-        }
-
-        /// <inheritdoc />
         public IServiceProvider ServiceProvider => this.runtimeClient.ServiceProvider;
-        
-        /// <inheritdoc />
-        public ClientConfiguration Configuration { get; }
 
         /// <inheritdoc />
         IStreamProviderRuntime IInternalClusterClient.StreamProviderRuntime => this.runtimeClient.CurrentStreamProviderRuntime;
@@ -85,13 +92,6 @@ namespace Orleans
                                     this.state == LifecycleState.Disposing;
 
         /// <inheritdoc />
-        public IEnumerable<IStreamProvider> GetStreamProviders()
-        {
-            this.ThrowIfDisposedOrNotInitialized();
-            return this.runtimeClient.CurrentStreamProviderManager.GetStreamProviders();
-        }
-
-        /// <inheritdoc />
         public IStreamProvider GetStreamProvider(string name)
         {
             this.ThrowIfDisposedOrNotInitialized();
@@ -100,11 +100,11 @@ namespace Orleans
                 throw new ArgumentNullException(nameof(name));
             }
 
-            return this.runtimeClient.CurrentStreamProviderManager.GetProvider(name) as IStreamProvider;
+            return this.runtimeClient.ServiceProvider.GetRequiredServiceByName<IStreamProvider>(name);
         }
-        
+
         /// <inheritdoc />
-        public async Task Connect()
+        public async Task Connect(Func<Exception, Task<bool>> retryFilter = null)
         {
             this.ThrowIfDisposedOrAlreadyInitialized();
             using (await this.initLock.LockAsync().ConfigureAwait(false))
@@ -116,7 +116,8 @@ namespace Orleans
                 }
                 
                 this.state = LifecycleState.Starting;
-                await this.runtimeClient.Start().ConfigureAwait(false);
+                await this.runtimeClient.Start(retryFilter).ConfigureAwait(false);
+                await this.clusterClientLifecycle.OnStart().ConfigureAwait(false);
                 this.state = LifecycleState.Started;
             }
         }
@@ -139,6 +140,14 @@ namespace Orleans
                 try
                 {
                     this.state = LifecycleState.Disposing;
+                    CancellationToken canceled = CancellationToken.None;
+                    if (!gracefully)
+                    {
+                        var cts = new CancellationTokenSource();
+                        cts.Cancel();
+                        canceled = cts.Token;
+                    }
+                    await this.clusterClientLifecycle.OnStop(canceled);
                     if (gracefully)
                     {
                         Utils.SafeExecute(() => this.runtimeClient.Disconnect());
@@ -264,7 +273,7 @@ namespace Orleans
         private void ThrowIfDisposedOrNotInitialized()
         {
             this.ThrowIfDisposed();
-            if (!this.IsInitialized) throw new InvalidOperationException("Client is not initialized.");
+            if (!this.IsInitialized) throw new InvalidOperationException($"Client is not initialized. Current client state is {this.state}.");
         }
 
         private void ThrowIfDisposedOrAlreadyInitialized()

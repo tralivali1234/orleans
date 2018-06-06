@@ -1,7 +1,11 @@
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Orleans;
+using Orleans.Configuration;
+using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.TestingHost;
 using TestExtensions;
@@ -12,17 +16,32 @@ namespace UnitTests.MembershipTests
 {
     public class SilosStopTests : TestClusterPerTest
     {
-        public override TestCluster CreateTestCluster()
+        private class BuilderConfigurator : ISiloBuilderConfigurator, IClientBuilderConfigurator
         {
-            var options = new TestClusterOptions(2);
-            options.ClusterConfiguration.Globals.DefaultPlacementStrategy = "ActivationCountBasedPlacement";
-            options.ClusterConfiguration.Globals.NumMissedProbesLimit = 1;
-            options.ClusterConfiguration.Globals.NumVotesForDeathDeclaration = 1;
-            options.ClusterConfiguration.Globals.TypeMapRefreshInterval = TimeSpan.FromMilliseconds(100);
+            public void Configure(ISiloHostBuilder hostBuilder)
+            {
+                hostBuilder
+                    .Configure<ClusterMembershipOptions>(options =>
+                    {
+                        options.NumMissedProbesLimit = 1;
+                        options.NumVotesForDeathDeclaration = 1;
+                        options.TableRefreshTimeout = TimeSpan.FromSeconds(2);
+                    })
+                    .Configure<SiloMessagingOptions>(options => options.AssumeHomogenousSilosForTesting = true);
+            }
 
-            // use only Primary as the gateway
-            options.ClientConfiguration.Gateways = options.ClientConfiguration.Gateways.Take(1).ToList();
-            return new TestCluster(options);
+            public void Configure(IConfiguration configuration, IClientBuilder clientBuilder)
+            {
+                var clusterOptions = configuration.GetTestClusterOptions();
+                clientBuilder.UseStaticClustering(new IPEndPoint(IPAddress.Loopback, clusterOptions.BaseGatewayPort));
+            }
+        }
+
+        protected override void ConfigureTestCluster(TestClusterBuilder builder)
+        {
+            builder.CreateSilo = AppDomainSiloHandle.Create;
+            builder.AddClientBuilderConfigurator<BuilderConfigurator>();
+            builder.AddSiloBuilderConfigurator<BuilderConfigurator>();
         }
 
         [Fact, TestCategory("Functional"), TestCategory("Liveness")]
@@ -56,15 +75,14 @@ namespace UnitTests.MembershipTests
 
         private async Task<ILongRunningTaskGrain<bool>> GetGrainOnTargetSilo(SiloHandle siloHandle)
         {
-            const int maxRetry = 5;
+            const int maxRetry = 10;
             for (int i = 0; i < maxRetry; i++)
             {
                 var grain = GrainFactory.GetGrain<ILongRunningTaskGrain<bool>>(Guid.NewGuid());
                 var instanceId = await grain.GetRuntimeInstanceId();
                 if (instanceId.Contains(siloHandle.SiloAddress.Endpoint.ToString()))
-                {
                     return grain;
-                }
+                await Task.Delay(100);
             }
             return null;
         }

@@ -1,10 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
@@ -25,20 +27,23 @@ namespace UnitTests.ActivationsLifeCycleTests
 
         private TestCluster testCluster;
 
-        private Logger logger;
+        private ILogger logger;
 
         private void Initialize(TimeSpan collectionAgeLimit, TimeSpan quantum)
         {
             GlobalConfiguration.ENFORCE_MINIMUM_REQUIREMENT_FOR_AGE_LIMIT = false;
-            var options = new TestClusterOptions(1);
-            var config = options.ClusterConfiguration;
-            config.Globals.CollectionQuantum = quantum;
-            config.Globals.Application.SetDefaultCollectionAgeLimit(collectionAgeLimit);
-            config.Globals.Application.SetCollectionAgeLimit(typeof(IdleActivationGcTestGrain2), TimeSpan.FromSeconds(10));
-            config.Globals.Application.SetCollectionAgeLimit(typeof(BusyActivationGcTestGrain2), TimeSpan.FromSeconds(10));
-            testCluster = new TestCluster(config);
+            var builder = new TestClusterBuilder(1);
+            builder.ConfigureLegacyConfiguration(legacy =>
+            {
+                var config = legacy.ClusterConfiguration;
+                config.Globals.CollectionQuantum = quantum;
+                config.Globals.Application.SetDefaultCollectionAgeLimit(collectionAgeLimit);
+                config.Globals.Application.SetCollectionAgeLimit(typeof(IdleActivationGcTestGrain2), TimeSpan.FromSeconds(10));
+                config.Globals.Application.SetCollectionAgeLimit(typeof(BusyActivationGcTestGrain2), TimeSpan.FromSeconds(10));
+            });
+            testCluster = builder.Build();
             testCluster.Deploy();
-            this.logger = this.testCluster.Client.Logger;
+            this.logger = this.testCluster.Client.ServiceProvider.GetRequiredService<ILogger<ActivationCollectorTests>>();
         }
 
         private void Initialize(TimeSpan collectionAgeLimit)

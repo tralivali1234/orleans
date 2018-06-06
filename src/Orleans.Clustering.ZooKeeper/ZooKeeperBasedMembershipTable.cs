@@ -9,7 +9,7 @@ using org.apache.zookeeper;
 using org.apache.zookeeper.data;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OrleansZooKeeperUtils.Configuration;
+using Orleans.Configuration;
 using Orleans.Runtime.Configuration;
 using Orleans.Runtime.Host;
 
@@ -56,12 +56,15 @@ namespace Orleans.Runtime.Membership
         /// </summary>
         private string rootConnectionString;
         
-        public ZooKeeperBasedMembershipTable(ILogger<ZooKeeperBasedMembershipTable> logger, IOptions<ZooKeeperMembershipOptions> membershipTableOptions, GlobalConfiguration globalConfiguration)
+        public ZooKeeperBasedMembershipTable(
+            ILogger<ZooKeeperBasedMembershipTable> logger, 
+            IOptions<ZooKeeperClusteringSiloOptions> membershipTableOptions, 
+            IOptions<ClusterOptions> clusterOptions)
         {
             this.logger = logger;
             var options = membershipTableOptions.Value;
             watcher = new ZooKeeperWatcher(logger);
-            InitConfig(options.ConnectionString, globalConfiguration.ClusterId);
+            InitConfig(options.ConnectionString, clusterOptions.Value.ClusterId);
         }
 
         /// <summary>

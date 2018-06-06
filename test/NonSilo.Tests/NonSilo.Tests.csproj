@@ -5,14 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Orleans.Core.Abstractions\Orleans.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Orleans.TestingHost\Orleans.TestingHost.csproj" />
-    <ProjectReference Include="..\..\src\OrleansProviders\OrleansProviders.csproj" />
-    <ProjectReference Include="..\..\src\Orleans.Streaming.EventHubs\Orleans.Streaming.EventHubs.csproj" />
     <ProjectReference Include="..\Tester\Tester.csproj" />
-    <ProjectReference Include="..\TestExtensions\TestExtensions.csproj" />
-    <ProjectReference Include="..\TestGrains\TestGrains.csproj" />
-    <ProjectReference Include="..\TestInternalGrains\TestInternalGrains.csproj" />
+    <ProjectReference Include="..\TestInfrastructure\TestExtensions\TestExtensions.csproj" />
+    <ProjectReference Include="..\Grains\TestGrains\TestGrains.csproj" />
+    <ProjectReference Include="..\Grains\TestInternalGrains\TestInternalGrains.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -73,28 +69,28 @@
     <Content Include="DevTestServerConfiguration.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer2.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer2.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer3.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer3.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer4.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer4.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer5.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer5.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer6.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer6.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer7.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer7.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="SerializationTests\ConfigurationTests\ClientConfigurationForSerializer8.xml">
+    <Content Include="Serialization\ConfigurationTests\ClientConfigurationForSerializer8.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="..\..\src\SDK\OrleansConfiguration.xml">
@@ -108,6 +104,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Threading.Tasks.Extensions" Version="4.4.0" />
     <PackageReference Include="System.ValueTuple" Version="4.4.0" />
+    <PackageReference Include="xunit" Version="$(xUnitVersion)" />
+    <DotNetCliToolReference Include="dotnet-xunit" Version="$(xUnitVersion)" />
   </ItemGroup>
 </Project>

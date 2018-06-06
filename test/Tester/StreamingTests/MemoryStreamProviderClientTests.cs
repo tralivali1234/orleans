@@ -1,8 +1,10 @@
-﻿
+
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Orleans;
+using Orleans.Hosting;
 using Orleans.Providers;
 using Orleans.Providers.Streams.Generator;
 using Orleans.Runtime;
@@ -18,48 +20,40 @@ namespace Tester.StreamingTests
     {
         public class Fixture : BaseTestClusterFixture
         {
-            public const string StreamProviderName = nameof(MemoryStreamProvider);
+            public const string StreamProviderName = "MemoryStreamProvider";
             public const string StreamNamespace = "StreamNamespace";
-
-            public static readonly SimpleGeneratorConfig GeneratorConfig = new SimpleGeneratorConfig
+            private const int partitionCount = 8;
+            protected override void ConfigureTestCluster(TestClusterBuilder builder)
             {
-                StreamNamespace = StreamNamespace,
-                EventsInStream = 100
-            };
+                builder.ConfigureLegacyConfiguration(legacy =>
+                {
+                    AdjustConfig(legacy.ClusterConfiguration);
+                });
+                builder.AddSiloBuilderConfigurator<MySiloBuilderConfigurator>();
+                builder.AddClientBuilderConfigurator<MyClientBuilderConfigurator>();
+            }
 
-            public static readonly MemoryAdapterConfig AdapterConfig = new MemoryAdapterConfig(StreamProviderName);
-
-            protected override TestCluster CreateTestCluster()
+            private class MyClientBuilderConfigurator : IClientBuilderConfigurator
             {
-                var options = new TestClusterOptions(2);
-                AdjustConfig(options.ClusterConfiguration);
-                AdjustConfig(options.ClientConfiguration);
-                return new TestCluster(options);
+                public void Configure(IConfiguration configuration, IClientBuilder clientBuilder) => clientBuilder
+                        .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName, b=>b
+                    .ConfigurePartitioning(partitionCount));
+            }
+
+            private class MySiloBuilderConfigurator : ISiloBuilderConfigurator
+            {
+                public void Configure(ISiloHostBuilder hostBuilder)=> hostBuilder.AddMemoryGrainStorage("PubSubStore")
+                        .AddMemoryStreams<DefaultMemoryMessageBodySerializer>(StreamProviderName, b=>b
+                    .ConfigurePartitioning(partitionCount));
             }
 
             private static void AdjustConfig(ClusterConfiguration config)
             {
                 // register stream provider
-                config.AddMemoryStorageProvider("PubSubStore");
-                config.Globals.RegisterStreamProvider<MemoryStreamProvider>(StreamProviderName, BuildProviderSettings());
                 config.Globals.ClientDropTimeout = TimeSpan.FromSeconds(5);
-            }
-
-            private static void AdjustConfig(ClientConfiguration config)
-            {
-                config.RegisterStreamProvider<MemoryStreamProvider>(StreamProviderName, BuildProviderSettings());
-            }
-
-            private static Dictionary<string, string> BuildProviderSettings()
-            {
-                var settings = new Dictionary<string, string>();
-                // get initial settings from configs
-                ProviderConfig.WriteProperties(settings);
-                return settings;
             }
         }
 
-        private static readonly MemoryAdapterConfig ProviderConfig = new MemoryAdapterConfig(Fixture.StreamProviderName);
         private readonly ITestOutputHelper output = null;
         private readonly ClientStreamTestRunner runner;
 

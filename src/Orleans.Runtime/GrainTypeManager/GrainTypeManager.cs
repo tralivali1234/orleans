@@ -4,12 +4,15 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.ApplicationParts;
 using Orleans.CodeGeneration;
+using Orleans.Configuration;
 using Orleans.GrainDirectory;
-using Orleans.Hosting;
 using Orleans.Metadata;
+using Orleans.Runtime.Placement;
 using Orleans.Serialization;
 using Orleans.Utilities;
 
@@ -19,7 +22,7 @@ namespace Orleans.Runtime
     {
         private Dictionary<SiloAddress, GrainInterfaceMap> grainInterfaceMapsBySilo;
         private Dictionary<int, List<SiloAddress>> supportedSilosByTypeCode;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private readonly GrainInterfaceMap grainInterfaceMap;
         private readonly Dictionary<string, GrainTypeData> grainTypes;
         private readonly Dictionary<int, InvokerData> invokers;
@@ -34,22 +37,25 @@ namespace Orleans.Runtime
 
         public GrainInterfaceMap ClusterGrainInterfaceMap { get; private set; }
 
+        public IGrainTypeResolver GrainTypeResolver { get; private set; }
+
         public GrainTypeManager(
             ILocalSiloDetails siloDetails,
-            ApplicationPartManager applicationPartManager,
-            DefaultPlacementStrategy defaultPlacementStrategy,
+            IApplicationPartManager applicationPartManager,
+            PlacementStrategy defaultPlacementStrategy,
             SerializationManager serializationManager,
             MultiClusterRegistrationStrategyManager multiClusterRegistrationStrategyManager,
-            LoggerWrapper<GrainTypeManager> logger,
+            ILogger<GrainTypeManager> logger,
             IOptions<GrainClassOptions> grainClassOptions)
         {
             var localTestMode = siloDetails.SiloAddress.Endpoint.Address.Equals(IPAddress.Loopback);
             this.logger = logger;
-            this.defaultPlacementStrategy = defaultPlacementStrategy.PlacementStrategy;
+            this.defaultPlacementStrategy = defaultPlacementStrategy;
             this.serializationManager = serializationManager;
             this.multiClusterRegistrationStrategyManager = multiClusterRegistrationStrategyManager;
             grainInterfaceMap = new GrainInterfaceMap(localTestMode, this.defaultPlacementStrategy);
             ClusterGrainInterfaceMap = grainInterfaceMap;
+            GrainTypeResolver = grainInterfaceMap.GetGrainTypeResolver();
             grainInterfaceMapsBySilo = new Dictionary<SiloAddress, GrainInterfaceMap>();
 
             var grainClassFeature = applicationPartManager.CreateAndPopulateFeature<GrainClassFeature>();
@@ -305,6 +311,7 @@ namespace Orleans.Runtime
                 silos.Sort(); 
             }
             ClusterGrainInterfaceMap = newClusterGrainInterfaceMap;
+            GrainTypeResolver = ClusterGrainInterfaceMap.GetGrainTypeResolver();
             supportedSilosByTypeCode = newSupportedSilosByTypeCode;
             supportedSilosByInterface = newSupportedSilosByInterface;
         }
@@ -330,7 +337,7 @@ namespace Orleans.Runtime
             return result;
         }
 
-        internal static void LogGrainTypesFound(Logger logger, IDictionary<string, GrainTypeData> grainTypeData)
+        internal static void LogGrainTypesFound(ILogger logger, IDictionary<string, GrainTypeData> grainTypeData)
         {
             var sb = new StringBuilder();
             sb.AppendLine(String.Format("Loaded grain type summary for {0} types: ", grainTypeData.Count));

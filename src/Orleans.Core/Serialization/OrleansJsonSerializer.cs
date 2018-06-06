@@ -1,6 +1,8 @@
-﻿using System;
+using System;
 using System.Net;
+using System.Reflection;
 using System.Runtime.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Orleans.Runtime;
@@ -8,7 +10,7 @@ using Orleans.Runtime;
 namespace Orleans.Serialization
 {
     using Orleans.Providers;
-    
+
     public class OrleansJsonSerializer : IExternalSerializer
     {
         public const string UseFullAssemblyNamesProperty = "UseFullAssemblyNames";
@@ -16,17 +18,18 @@ namespace Orleans.Serialization
         public const string TypeNameHandlingProperty = "TypeNameHandling";
         private readonly JsonSerializerSettings settings;
 
-        public OrleansJsonSerializer(SerializationManager serializationManager, IGrainFactory grainFactory)
+        public OrleansJsonSerializer(ITypeResolver typeResolver, IGrainFactory grainFactory)
         {
-            this.settings = GetDefaultSerializerSettings(serializationManager, grainFactory);
+            this.settings = GetDefaultSerializerSettings(typeResolver, grainFactory);
         }
 
         /// <summary>
         /// Returns the default serializer settings.
         /// </summary>
         /// <returns>The default serializer settings.</returns>
-        public static JsonSerializerSettings GetDefaultSerializerSettings(SerializationManager serializationManager, IGrainFactory grainFactory)
+        public static JsonSerializerSettings GetDefaultSerializerSettings(ITypeResolver typeResolver, IGrainFactory grainFactory)
         {
+            var serializationBinder = new OrleansJsonSerializationBinder(typeResolver);
             var settings = new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.All,
@@ -37,10 +40,8 @@ namespace Orleans.Serialization
                 NullValueHandling = NullValueHandling.Ignore,
                 ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
                 TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Simple,
-
-                // Types such as GrainReference need context during deserialization, so provide that context now.
-                Context = new StreamingContext(StreamingContextStates.All, new SerializationContext(serializationManager)),
-                Formatting = Formatting.None
+                Formatting = Formatting.None,
+                SerializationBinder = serializationBinder
             };
 
             settings.Converters.Add(new IPAddressConverter());
@@ -48,7 +49,7 @@ namespace Orleans.Serialization
             settings.Converters.Add(new GrainIdConverter());
             settings.Converters.Add(new SiloAddressConverter());
             settings.Converters.Add(new UniqueKeyConverter());
-            settings.Converters.Add(new GrainReferenceConverter(grainFactory));
+            settings.Converters.Add(new GrainReferenceConverter(grainFactory, serializationBinder));
 
             return settings;
         }
@@ -62,31 +63,27 @@ namespace Orleans.Serialization
         /// <returns>The updated <see cref="JsonSerializerSettings" />.</returns>
         public static JsonSerializerSettings UpdateSerializerSettings(JsonSerializerSettings settings, IProviderConfiguration config)
         {
-            if (config.Properties.ContainsKey(UseFullAssemblyNamesProperty))
+            bool useFullAssemblyNames = config.GetBoolProperty(UseFullAssemblyNamesProperty, false);
+            bool indentJson = config.GetBoolProperty(IndentJsonProperty, false);
+            TypeNameHandling typeNameHandling = config.GetEnumProperty(TypeNameHandlingProperty, settings.TypeNameHandling);
+            return UpdateSerializerSettings(settings, useFullAssemblyNames, indentJson, typeNameHandling);
+        }
+
+        public static JsonSerializerSettings UpdateSerializerSettings(JsonSerializerSettings settings, bool useFullAssemblyNames, bool indentJson, TypeNameHandling? typeNameHandling)
+        {
+            if (useFullAssemblyNames)
             {
-                bool useFullAssemblyNames;
-                if (bool.TryParse(config.Properties[UseFullAssemblyNamesProperty], out useFullAssemblyNames) && useFullAssemblyNames)
-                {
-                    settings.TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Full;
-                }
+                settings.TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Full;
             }
 
-            if (config.Properties.ContainsKey(IndentJsonProperty))
+            if (indentJson)
             {
-                bool indentJson;
-                if (bool.TryParse(config.Properties[IndentJsonProperty], out indentJson) && indentJson)
-                {
-                    settings.Formatting = Formatting.Indented;
-                }
+                settings.Formatting = Formatting.Indented;
             }
 
-            if (config.Properties.ContainsKey(TypeNameHandlingProperty))
+            if (typeNameHandling.HasValue)
             {
-                TypeNameHandling typeNameHandling;
-                if (Enum.TryParse<TypeNameHandling>(config.Properties[TypeNameHandlingProperty], out typeNameHandling))
-                {
-                    settings.TypeNameHandling = typeNameHandling;
-                }
+                settings.TypeNameHandling = typeNameHandling.Value;
             }
             return settings;
         }
@@ -286,7 +283,7 @@ namespace Orleans.Serialization
         private readonly IGrainFactory grainFactory;
         private readonly JsonSerializer internalSerializer;
 
-        public GrainReferenceConverter(IGrainFactory grainFactory)
+        public GrainReferenceConverter(IGrainFactory grainFactory, OrleansJsonSerializationBinder serializationBinder)
         {
             this.grainFactory = grainFactory;
 
@@ -302,6 +299,7 @@ namespace Orleans.Serialization
                 NullValueHandling = NullValueHandling.Ignore,
                 ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
                 Formatting = Formatting.None,
+                SerializationBinder = serializationBinder,
                 Converters =
                 {
                     new IPAddressConverter(),

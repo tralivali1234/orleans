@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading.Tasks;
+using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.Runtime.Configuration;
 using Orleans.TestingHost;
@@ -20,20 +21,29 @@ namespace UnitTests.General
         private const int leavy = 300;
         private const int perSilo = 1000;
 
-        public override TestCluster CreateTestCluster()
+        protected override void ConfigureTestCluster(TestClusterBuilder builder)
         {
-            var options = new TestClusterOptions();
+            builder.ConfigureLegacyConfiguration(legacy =>
+            {
+                legacy.ClusterConfiguration.ApplyToAllNodes(nodeConfig => nodeConfig.LoadSheddingEnabled = true);
+            });
+            builder.AddSiloBuilderConfigurator<SiloConfigurator>();
+        }
 
-            options.ClusterConfiguration.AddMemoryStorageProvider("MemoryStore");
-            options.ClusterConfiguration.AddMemoryStorageProvider("Default");
-            return new TestCluster(options);
+        private class SiloConfigurator : ISiloBuilderConfigurator
+        {
+            public void Configure(ISiloHostBuilder hostBuilder)
+            {
+                hostBuilder.AddMemoryGrainStorage("MemoryStore")
+                    .AddMemoryGrainStorageAsDefault();
+            }
         }
 
         /// <summary>
         /// Test placement behaviour for newly added silos. The grain placement strategy should favor them
         /// until they reach a similar load as the other silos.
         /// </summary>
-        [Fact, TestCategory("Functional")]
+        [SkippableFact(Skip = "https://github.com/dotnet/orleans/issues/4008"), TestCategory("Functional")]
         public async Task ElasticityTest_CatchingUp()
         {
 
@@ -87,10 +97,10 @@ namespace UnitTests.General
         /// This evaluates the how the placement strategy behaves once silos are stopped: The strategy should
         /// balance the activations from the stopped silo evenly among the remaining silos.
         /// </summary>
-        [Fact, TestCategory("Functional")]
+        [SkippableFact(Skip = "https://github.com/dotnet/orleans/issues/4008"), TestCategory("Functional")]
         public async Task ElasticityTest_StoppingSilos()
         {
-            List<SiloHandle> runtimes = this.HostedCluster.StartAdditionalSilos(2);
+            List<SiloHandle> runtimes = await this.HostedCluster.StartAdditionalSilos(2);
             await this.HostedCluster.WaitForLivenessToStabilizeAsync();
             int stopLeavy = leavy;
 
@@ -128,11 +138,14 @@ namespace UnitTests.General
         /// <summary>
         /// Do not place activation in case all silos are above 110 CPU utilization.
         /// </summary>
-        [Fact, TestCategory("Functional")]
+        [SkippableFact(Skip = "https://github.com/dotnet/orleans/issues/4008"), TestCategory("Functional")]
         public async Task ElasticityTest_AllSilosCPUTooHigh()
         {
             var taintedGrainPrimary = await GetGrainAtSilo(this.HostedCluster.Primary.SiloAddress);
             var taintedGrainSecondary = await GetGrainAtSilo(this.HostedCluster.SecondarySilos.First().SiloAddress);
+
+            await taintedGrainPrimary.EnableOverloadDetection(false);
+            await taintedGrainSecondary.EnableOverloadDetection(false);
 
             await taintedGrainPrimary.LatchCpuUsage(110.0f);
             await taintedGrainSecondary.LatchCpuUsage(110.0f);
@@ -144,7 +157,7 @@ namespace UnitTests.General
         /// <summary>
         /// Do not place activation in case all silos are above 110 CPU utilization or have overloaded flag set.
         /// </summary>
-        [Fact, TestCategory("Functional")]
+        [SkippableFact(Skip= "https://github.com/dotnet/orleans/issues/4008"), TestCategory("Functional")]
         public async Task ElasticityTest_AllSilosOverloaded()
         {
             var taintedGrainPrimary = await GetGrainAtSilo(this.HostedCluster.Primary.SiloAddress);

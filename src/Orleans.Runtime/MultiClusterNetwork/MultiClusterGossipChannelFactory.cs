@@ -1,20 +1,27 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Orleans.Runtime.Configuration;
+using Microsoft.Extensions.Options;
+using Orleans.Configuration;
 
 namespace Orleans.Runtime.MultiClusterNetwork
 {
     internal class MultiClusterGossipChannelFactory
     {
-        private readonly GlobalConfiguration globalConfig;
+        private readonly ClusterOptions clusterOptions;
+        private readonly MultiClusterOptions multiClusterOptions;
         private readonly IServiceProvider serviceProvider;
-        private readonly Logger logger;
+        private readonly ILogger logger;
 
-        public MultiClusterGossipChannelFactory(GlobalConfiguration globalConfig, IServiceProvider serviceProvider, LoggerWrapper<MultiClusterGossipChannelFactory> logger)
+        public MultiClusterGossipChannelFactory(
+            IOptions<ClusterOptions> clusterOptions,
+            IOptions<MultiClusterOptions> multiClusterOptions, 
+            IServiceProvider serviceProvider, 
+            ILogger<MultiClusterGossipChannelFactory> logger)
         {
-            this.globalConfig = globalConfig;
+            this.clusterOptions = clusterOptions.Value;
+            this.multiClusterOptions = multiClusterOptions.Value;
             this.serviceProvider = serviceProvider;
             this.logger = logger;
         }
@@ -23,17 +30,16 @@ namespace Orleans.Runtime.MultiClusterNetwork
         {
             List<IGossipChannel> gossipChannels = new List<IGossipChannel>();
 
-            var channelConfigurations = this.globalConfig.GossipChannels;
-            if (channelConfigurations != null)
+            foreach(KeyValuePair<string,string> channelConfig in this.multiClusterOptions.GossipChannels)
             {
-                logger.Info("Creating Gossip Channels.");
-                foreach (var channelConfiguration in channelConfigurations)
+                if (!string.IsNullOrWhiteSpace(channelConfig.Key))
                 {
-                    switch (channelConfiguration.ChannelType)
+                    logger.Info("Creating Gossip Channel.");
+                    switch (channelConfig.Key)
                     {
-                        case GlobalConfiguration.GossipChannelType.AzureTable:
-                            var tableChannel = AssemblyLoader.LoadAndCreateInstance<IGossipChannel>(Constants.ORLEANS_AZURE_UTILS_DLL, logger, this.serviceProvider);
-                            await tableChannel.Initialize(globalConfig.ServiceId, channelConfiguration.ConnectionString);
+                        case MultiClusterOptions.BuiltIn.AzureTable:
+                            var tableChannel = AssemblyLoader.LoadAndCreateInstance<IGossipChannel>(Constants.ORLEANS_CLUSTERING_AZURESTORAGE, logger, this.serviceProvider);
+                            await tableChannel.Initialize(this.clusterOptions.ServiceId, channelConfig.Value);
                             gossipChannels.Add(tableChannel);
                             break;
 
@@ -41,7 +47,7 @@ namespace Orleans.Runtime.MultiClusterNetwork
                             break;
                     }
 
-                    logger.Info("Configured Gossip Channel: Type={0} ConnectionString={1}", channelConfiguration.ChannelType, channelConfiguration.ConnectionString);
+                    logger.Info("Configured Gossip Channel: Type={0}", channelConfig.Key);
                 }
             }
 

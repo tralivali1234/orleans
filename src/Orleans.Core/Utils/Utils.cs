@@ -160,7 +160,8 @@ namespace Orleans.Runtime
         /// <returns></returns>
         public static Uri ToGatewayUri(this System.Net.IPEndPoint ep)
         {
-            return new Uri(string.Format("gwy.tcp://{0}:{1}/0", ep.Address, ep.Port));
+            var builder = new UriBuilder("gwy.tcp", ep.Address.ToString(), ep.Port, "0");
+            return builder.Uri;
         }
 
         /// <summary>
@@ -170,7 +171,8 @@ namespace Orleans.Runtime
         /// <returns></returns>
         public static Uri ToGatewayUri(this SiloAddress address)
         {
-            return new Uri(string.Format("gwy.tcp://{0}:{1}/{2}", address.Endpoint.Address, address.Endpoint.Port, address.Generation));
+            var builder = new UriBuilder("gwy.tcp", address.Endpoint.Address.ToString(), address.Endpoint.Port, address.Generation.ToString());
+            return builder.Uri;
         }
 
         
@@ -258,52 +260,7 @@ namespace Orleans.Runtime
             return false;
         }
 
-#region DeleteAfterLoggingMigrationFinished
-        public static void SafeExecute(Action action, Logger logger = null, string caller = null)
-        {
-            SafeExecute(action, logger, caller == null ? (Func<string>)null : () => caller);
-        }
-
-        // a function to safely execute an action without any exception being thrown.
-        // callerGetter function is called only in faulty case (now string is generated in the success case).
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Design", "CA1031:DoNotCatchGeneralExceptionTypes")]
-        public static void SafeExecute(Action action, Logger logger, Func<string> callerGetter)
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception exc)
-            {
-                try
-                {
-                    if (logger != null)
-                    {
-                        string caller = null;
-                        if (callerGetter != null)
-                        {
-                            try
-                            {
-                                caller = callerGetter();
-                            }
-                            catch (Exception) { }
-                        }
-                        foreach (var e in exc.FlattenAggregate())
-                        {
-                            logger.Warn(ErrorCode.Runtime_Error_100325,
-                                $"Ignoring {e.GetType().FullName} exception thrown from an action called by {caller ?? String.Empty}.", exc);
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    // now really, really ignore.
-                }
-            }
-        }
-#endregion
-
-        public static void SafeExecute(Action action, ILogger logger, string caller = null)
+        public static void SafeExecute(Action action, ILogger logger = null, string caller = null)
         {
             SafeExecute(action, logger, caller==null ? (Func<string>)null : () => caller);
         }
@@ -405,6 +362,11 @@ namespace Orleans.Runtime
 #else
             return new System.Diagnostics.StackTrace(skipFrames).ToString();
 #endif
+        }
+
+        public static GrainReference FromKeyString(string key, IGrainReferenceRuntime runtime)
+        {
+            return GrainReference.FromKeyString(key, runtime);
         }
     }
 }

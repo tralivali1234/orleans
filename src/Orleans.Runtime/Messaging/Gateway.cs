@@ -7,9 +7,9 @@ using System.Net.Sockets;
 using System.Threading;
 using Microsoft.Extensions.Logging;
 using Orleans.Messaging;
-using Orleans.Runtime.Configuration;
 using Orleans.Serialization;
 using Microsoft.Extensions.Options;
+using Orleans.Configuration;
 using Orleans.Hosting;
 
 namespace Orleans.Runtime.Messaging
@@ -36,27 +36,47 @@ namespace Orleans.Runtime.Messaging
         private readonly SerializationManager serializationManager;
         private readonly ExecutorService executorService;
 
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private readonly ILoggerFactory loggerFactory;
         private readonly SiloMessagingOptions messagingOptions;
         
-        public Gateway(MessageCenter msgCtr, NodeConfiguration nodeConfig, MessageFactory messageFactory, SerializationManager serializationManager, ExecutorService executorService, GlobalConfiguration globalConfig, ILoggerFactory loggerFactory, IOptions<SiloMessagingOptions> options)
+        public Gateway(
+            MessageCenter msgCtr, 
+            ILocalSiloDetails siloDetails, 
+            MessageFactory messageFactory, 
+            SerializationManager serializationManager, 
+            ExecutorService executorService, 
+            ILoggerFactory loggerFactory, 
+            IOptions<EndpointOptions> endpointOptions,
+            IOptions<SiloMessagingOptions> options, 
+            IOptions<MultiClusterOptions> multiClusterOptions,
+            OverloadDetector overloadDetector)
         {
             this.messagingOptions = options.Value;
             this.loggerFactory = loggerFactory;
             messageCenter = msgCtr;
             this.messageFactory = messageFactory;
-            this.logger = new LoggerWrapper<Gateway>(this.loggerFactory);
+            this.logger = this.loggerFactory.CreateLogger<Gateway>();
             this.serializationManager = serializationManager;
             this.executorService = executorService;
-            acceptor = new GatewayAcceptor(msgCtr,this, nodeConfig.ProxyGatewayEndpoint, this.messageFactory, this.serializationManager, globalConfig, executorService, loggerFactory);
+            acceptor = new GatewayAcceptor(
+                msgCtr,
+                this,
+                endpointOptions.Value.GetListeningProxyEndpoint(),
+                this.messageFactory,
+                this.serializationManager,
+                executorService,
+                siloDetails,
+                multiClusterOptions,
+                loggerFactory,
+                overloadDetector);
             senders = new Lazy<GatewaySender>[messagingOptions.GatewaySenderQueues];
             nextGatewaySenderToUseForRoundRobin = 0;
             dropper = new GatewayClientCleanupAgent(this, executorService, loggerFactory, messagingOptions.ClientDropTimeout);
             clients = new ConcurrentDictionary<GrainId, ClientState>();
             clientSockets = new ConcurrentDictionary<Socket, ClientState>();
             clientsReplyRoutingCache = new ClientsReplyRoutingCache(messagingOptions.ResponseTimeout);
-            this.gatewayAddress = SiloAddress.New(nodeConfig.ProxyGatewayEndpoint, 0);
+            this.gatewayAddress = siloDetails.GatewayAddress;
             lockable = new object();
         }
 
@@ -150,6 +170,19 @@ namespace Orleans.Runtime.Messaging
 
         internal SiloAddress TryToReroute(Message msg)
         {
+            // ** Special routing rule for system target here **
+            // When a client make a request/response to/from a SystemTarget, the TargetSilo can be set to either 
+            //  - the GatewayAddress of the target silo (for example, when the client want get the cluster typemap)
+            //  - the "internal" Silo-to-Silo address, if the client want to send a message to a specific SystemTarget
+            //    activation that is on a silo on which there is no gateway available (or if the client is not
+            //    connected to that gateway)
+            // So, if the TargetGrain is a SystemTarget we always trust the value from Message.TargetSilo and forward
+            // it to this address...
+            // EXCEPT if the value is equal to the current GatewayAdress: in this case we will return
+            // null and the local dispatcher will forward the Message to a local SystemTarget activation
+            if (msg.TargetGrain.IsSystemTarget && !IsTargetingLocalGateway(msg.TargetSilo))
+                return msg.TargetSilo;
+
             // for responses from ClientAddressableObject to ClientGrain try to use clientsReplyRoutingCache for sending replies directly back.
             if (!msg.SendingGrain.IsClient || !msg.TargetGrain.IsClient) return null;
 
@@ -175,6 +208,15 @@ namespace Orleans.Runtime.Messaging
             {
                 clientsReplyRoutingCache.DropExpiredEntries();
             }
+        }
+
+        private bool IsTargetingLocalGateway(SiloAddress siloAddress)
+        {
+            // Special case if the address used by the client was loopback
+            return this.gatewayAddress.Matches(siloAddress)
+                || (IPAddress.IsLoopback(siloAddress.Endpoint.Address)
+                    && siloAddress.Endpoint.Port == this.gatewayAddress.Endpoint.Port
+                    && siloAddress.Generation == this.gatewayAddress.Generation);
         }
         
 
@@ -222,9 +264,12 @@ namespace Orleans.Runtime.Messaging
             {
                 clientsReplyRoutingCache.RecordClientRoute(msg.SendingGrain, msg.SendingSilo);
             }
-            
+
             msg.TargetSilo = null;
-            msg.SendingSilo = gatewayAddress; // This makes sure we don't expose wrong silo addresses to the client. Client will only see silo address of the Gateway it is connected to.
+            // Override the SendingSilo only if the sending grain is not 
+            // a system target
+            if (!msg.SendingGrain.IsSystemTarget)
+                msg.SendingSilo = gatewayAddress;
             QueueRequest(client, msg);
             return true;
         }
@@ -286,7 +331,7 @@ namespace Orleans.Runtime.Messaging
         }
 
 
-        private class GatewayClientCleanupAgent : SingleTaskAsynchAgent
+        private class GatewayClientCleanupAgent : DedicatedAsynchAgent
         {
             private readonly Gateway gateway;
             private readonly TimeSpan clientDropTimeout;
@@ -423,7 +468,7 @@ namespace Orleans.Runtime.Messaging
                 {
                     if (msg == null) return;
 
-                    if (Log.IsVerbose3) Log.Verbose3("Queued message {0} for client {1}", msg, client);
+                    if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Queued message {0} for client {1}", msg, client);
                     clientState.PendingToSend.Enqueue(msg);
                     return;
                 }
@@ -445,12 +490,12 @@ namespace Orleans.Runtime.Messaging
 
                 if (!Send(msg, clientState.Socket))
                 {
-                    if (Log.IsVerbose3) Log.Verbose3("Queued message {0} for client {1}", msg, client);
+                    if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Queued message {0} for client {1}", msg, client);
                     clientState.PendingToSend.Enqueue(msg);
                 }
                 else
                 {
-                    if (Log.IsVerbose3) Log.Verbose3("Sent message {0} to client {1}", msg, client);
+                    if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Sent message {0} to client {1}", msg, client);
                 }
             }
 
@@ -462,7 +507,7 @@ namespace Orleans.Runtime.Messaging
                     var m = clientState.PendingToSend.Peek();
                     if (Send(m, clientState.Socket))
                     {
-                        if (Log.IsVerbose3) Log.Verbose3("Sent queued message {0} to client {1}", m, clientState.Id);
+                        if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Sent queued message {0} to client {1}", m, clientState.Id);
                         clientState.PendingToSend.Dequeue();
                     }
                     else
@@ -489,7 +534,7 @@ namespace Orleans.Runtime.Messaging
                     {
                         Log.Info(ErrorCode.Messaging_LargeMsg_Outgoing, "Preparing to send large message Size={0} HeaderLength={1} BodyLength={2} #ArraySegments={3}. Msg={4}",
                             headerLength + bodyLength + Message.LENGTH_HEADER_SIZE, headerLength, bodyLength, data.Count, this.ToString());
-                        if (Log.IsVerbose3) Log.Verbose3("Sending large message {0}", msg.ToLongString());
+                        if (Log.IsEnabled(LogLevel.Trace)) Log.Trace("Sending large message {0}", msg.ToLongString());
                     }
                 }
                 catch (Exception exc)

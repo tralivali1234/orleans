@@ -549,12 +549,12 @@ namespace Orleans.Runtime
             }
         }
 
-        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, Logger logger)
+        public static IEnumerable<Type> GetTypes(Assembly assembly, Predicate<Type> whereFunc, ILogger logger)
         {
             return assembly.IsDynamic ? Enumerable.Empty<Type>() : GetDefinedTypes(assembly, logger).Select(t => t.AsType()).Where(type => !type.GetTypeInfo().IsNestedPrivate && whereFunc(type));
         }
 
-        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, ILogger logger)
+        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, ILogger logger=null)
         {
             try
             {
@@ -574,52 +574,6 @@ namespace Orleans.Runtime
                 {
                     return typeLoadException.Types?.Where(type => type != null).Select(type => type.GetTypeInfo()) ??
                            Enumerable.Empty<TypeInfo>();
-                }
-
-                return Enumerable.Empty<TypeInfo>();
-            }
-        }
-
-        //TODO: delete this one after runtime migrate off Logger
-        public static IEnumerable<TypeInfo> GetDefinedTypes(Assembly assembly, Logger logger = null)
-        {
-            try
-            {
-                return assembly.DefinedTypes;
-            }
-            catch (Exception exception)
-            {
-                var typeLoadException = exception as ReflectionTypeLoadException;
-
-                if (typeLoadException != null)
-                {
-                    if (typeLoadException.LoaderExceptions != null)
-                    {
-                        //
-                        // If we've only BadImageFormatExceptions in LoaderExceptions, then it's ok to not to log, otherwise log
-                        // as a warning.
-                        //
-
-                        if (logger != null && logger.IsWarning)
-                        {
-                            if (typeLoadException.LoaderExceptions.Any(ex => !(ex is BadImageFormatException)) || logger.IsVerbose)
-                            {
-                                var message =
-                                    $"Exception loading types from assembly '{assembly.FullName}': {LogFormatter.PrintException(exception)}.";
-                                logger.Warn(ErrorCode.Loader_TypeLoadError_5, message, exception);
-                            }
-                        }
-                    }
-
-                    return typeLoadException.Types?.Where(type => type != null).Select(type => type.GetTypeInfo()) ??
-                           Enumerable.Empty<TypeInfo>();
-                }
-
-                if (logger != null && logger.IsWarning)
-                {
-                    var message =
-                        $"Exception loading types from assembly '{assembly.FullName}': {LogFormatter.PrintException(exception)}.";
-                    logger.Warn(ErrorCode.Loader_TypeLoadError_5, message, exception);
                 }
 
                 return Enumerable.Empty<TypeInfo>();
@@ -737,6 +691,11 @@ namespace Orleans.Runtime
 
         /// <summary>Returns a string representation of <paramref name="type"/>.</summary>
         /// <param name="type">The type.</param>
+        /// <returns>A string representation of the <paramref name="type"/>.</returns>
+        public static string GetLogFormat(this Type type) => type.GetParseableName(TypeFormattingOptions.LogFormat);
+
+        /// <summary>Returns a string representation of <paramref name="type"/>.</summary>
+        /// <param name="type">The type.</param>
         /// <param name="options">The type formatting options.</param>
         /// <param name="getNameFunc">The delegate used to get the unadorned, simple type name of <paramref name="type"/>.</param>
         /// <returns>A string representation of the <paramref name="type"/>.</returns>
@@ -771,6 +730,7 @@ namespace Orleans.Runtime
         /// <param name="builder">The <see cref="StringBuilder"/> to append results to.</param>
         /// <param name="typeArguments">The type arguments of <paramref name="type"/>.</param>
         /// <param name="options">The type formatting options.</param>
+        /// <param name="getNameFunc">Delegate that returns name for a type.</param>
         private static void GetParseableName(
             Type type,
             StringBuilder builder,

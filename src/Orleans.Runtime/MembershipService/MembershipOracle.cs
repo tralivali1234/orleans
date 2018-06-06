@@ -3,22 +3,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Orleans.Runtime.Configuration;
+using Microsoft.Extensions.Options;
+using Orleans.Configuration;
 using Orleans.Runtime.Messaging;
-using Orleans.Runtime.Scheduler;
 
 namespace Orleans.Runtime.MembershipService
 {
     internal class MembershipOracle : SystemTarget, IMembershipOracle, IMembershipService
     {
-        private readonly MembershipTableFactory membershipTableFactory;
         private readonly IInternalGrainFactory grainFactory;
         private IMembershipTable membershipTableProvider;
         private readonly MembershipOracleData membershipOracleData;
         private Dictionary<SiloAddress, int> probedSilos;  // map from currently probed silos to the number of failed probes
-        private readonly Logger logger;
-        private readonly ClusterConfiguration orleansConfig;
-        private readonly NodeConfiguration nodeConfig;
+        private readonly ILogger logger;
+        private readonly ClusterMembershipOptions clusterMembershipOptions;
         private SiloAddress MyAddress { get { return membershipOracleData.MyAddress; } }
         private GrainTimer timerGetTableUpdates;
         private GrainTimer timerProbeOtherSilos;
@@ -37,21 +35,21 @@ namespace Orleans.Runtime.MembershipService
 
         public string SiloName { get { return membershipOracleData.SiloName; } }
         public SiloAddress SiloAddress { get { return membershipOracleData.MyAddress; } }
-        private TimeSpan AllowedIAmAliveMissPeriod { get { return orleansConfig.Globals.IAmAliveTablePublishTimeout.Multiply(orleansConfig.Globals.NumMissedTableIAmAliveLimit); } }
+        private TimeSpan AllowedIAmAliveMissPeriod { get { return this.clusterMembershipOptions.IAmAliveTablePublishTimeout.Multiply(this.clusterMembershipOptions.NumMissedTableIAmAliveLimit); } }
         private readonly ILoggerFactory loggerFactory;
-        public MembershipOracle(ILocalSiloDetails siloDetails, ClusterConfiguration clusterConfiguration, NodeConfiguration nodeConfiguration, MembershipTableFactory membershipTableFactory, IInternalGrainFactory grainFactory, ILoggerFactory loggerFactory)
+
+        public MembershipOracle(ILocalSiloDetails siloDetails, IOptions<ClusterMembershipOptions> clusterMembershipOptions, IMembershipTable membershipTable, IInternalGrainFactory grainFactory, IOptions<MultiClusterOptions> multiClusterOptions, ILoggerFactory loggerFactory)
             : base(Constants.MembershipOracleId, siloDetails.SiloAddress, loggerFactory)
         {
             this.loggerFactory = loggerFactory;
-            this.membershipTableFactory = membershipTableFactory;
+            this.membershipTableProvider = membershipTable;
             this.grainFactory = grainFactory;
-            logger = new LoggerWrapper<MembershipOracle>(loggerFactory);
-            membershipOracleData = new MembershipOracleData(siloDetails, nodeConfiguration, clusterConfiguration.Globals, logger);
+            logger = loggerFactory.CreateLogger<MembershipOracleData>();
+            membershipOracleData = new MembershipOracleData(siloDetails, logger, multiClusterOptions.Value);
             probedSilos = new Dictionary<SiloAddress, int>();
-            orleansConfig = clusterConfiguration;
-            nodeConfig = nodeConfiguration;
+            this.clusterMembershipOptions = clusterMembershipOptions.Value;
             pingCounter = 0;
-            TimeSpan backOffMax = StandardExtensions.Max(EXP_BACKOFF_STEP.Multiply(orleansConfig.Globals.ExpectedClusterSize), SiloMessageSender.CONNECTION_RETRY_DELAY.Multiply(2));
+            TimeSpan backOffMax = StandardExtensions.Max(EXP_BACKOFF_STEP.Multiply(this.clusterMembershipOptions.ExpectedClusterSize), SiloMessageSender.CONNECTION_RETRY_DELAY.Multiply(2));
             EXP_BACKOFF_CONTENTION_MAX = backOffMax;
             EXP_BACKOFF_ERROR_MAX = backOffMax;
             timerLogger = this.loggerFactory.CreateLogger<GrainTimer>();
@@ -65,16 +63,20 @@ namespace Orleans.Runtime.MembershipService
             {
                 logger.Info(ErrorCode.MembershipStarting, "MembershipOracle starting on host = " + membershipOracleData.MyHostname + " address = " + MyAddress.ToLongString() + " at " + LogFormatter.PrintDate(membershipOracleData.SiloStartTime) + ", backOffMax = " + EXP_BACKOFF_CONTENTION_MAX);
 
-                // Create the membership table.
-                this.membershipTableProvider = await this.membershipTableFactory.GetMembershipTable();
+                // Init the membership table.
+                await this.membershipTableProvider.InitializeMembershipTable(true);
 
-                // randomly delay the startup, so not all silos write to the table at once.
-                // Use random time not larger than MaxJoinAttemptTime, one minute and 0.5sec*ExpectedClusterSize;
-                var random = new SafeRandom();
-                var maxDelay = TimeSpan.FromMilliseconds(500).Multiply(orleansConfig.Globals.ExpectedClusterSize);
-                maxDelay = StandardExtensions.Min(maxDelay, StandardExtensions.Min(orleansConfig.Globals.MaxJoinAttemptTime, TimeSpan.FromMinutes(1)));
-                var randomDelay = random.NextTimeSpan(maxDelay);
-                await Task.Delay(randomDelay);
+                if (this.clusterMembershipOptions.ExpectedClusterSize > 1)
+                {
+                    // randomly delay the startup, so not all silos write to the table at once.
+                    // Use random time not larger than MaxJoinAttemptTime, one minute and 0.5sec*ExpectedClusterSize;
+                    // Skip waiting if we expect only one member for the cluster.
+                    var random = new SafeRandom();
+                    var maxDelay = TimeSpan.FromMilliseconds(500).Multiply(this.clusterMembershipOptions.ExpectedClusterSize);
+                    maxDelay = StandardExtensions.Min(maxDelay, StandardExtensions.Min(this.clusterMembershipOptions.MaxJoinAttemptTime, TimeSpan.FromMinutes(1)));
+                    var randomDelay = random.NextTimeSpan(maxDelay);
+                    await Task.Delay(randomDelay);
+                }
 
                 // first, cleanup all outdated entries of myself from the table
                 await CleanupTable();
@@ -97,10 +99,10 @@ namespace Orleans.Runtime.MembershipService
         private async Task DetectNodeMigration(string myHostname)
         {
             MembershipTableData table = await membershipTableProvider.ReadAll();
-            if (logger.IsVerbose) logger.Verbose("-ReadAll Membership table {0}", table.ToString());
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-ReadAll Membership table {0}", table.ToString());
             CheckMissedIAmAlives(table);
 
-            string mySiloName = nodeConfig.SiloName;
+            string mySiloName = SiloName;
             MembershipEntry mostRecentPreviousEntry = null;
             // look for silo instances that are same as me, find most recent with Generation before me.
             foreach (MembershipEntry entry in table.Members.Select(tuple => tuple.Item1).Where(data => mySiloName.Equals(data.SiloName)))
@@ -147,8 +149,8 @@ namespace Orleans.Runtime.MembershipService
                 Action configure = () =>
                 {
                     var random = new SafeRandom();
-                    var randomTableOffset = random.NextTimeSpan(orleansConfig.Globals.TableRefreshTimeout);
-                    var randomProbeOffset = random.NextTimeSpan(orleansConfig.Globals.ProbeTimeout);
+                    var randomTableOffset = random.NextTimeSpan(this.clusterMembershipOptions.TableRefreshTimeout);
+                    var randomProbeOffset = random.NextTimeSpan(this.clusterMembershipOptions.ProbeTimeout);
                     if (timerGetTableUpdates != null)
                         timerGetTableUpdates.Dispose();
                     timerGetTableUpdates = GrainTimer.FromTimerCallback(
@@ -157,7 +159,7 @@ namespace Orleans.Runtime.MembershipService
                         OnGetTableUpdateTimer,
                         null,
                         randomTableOffset,
-                        orleansConfig.Globals.TableRefreshTimeout,
+                        this.clusterMembershipOptions.TableRefreshTimeout,
                         "Membership.ReadTableTimer");
                     
                     timerGetTableUpdates.Start();
@@ -171,13 +173,15 @@ namespace Orleans.Runtime.MembershipService
                         OnProbeOtherSilosTimer,
                         null,
                         randomProbeOffset,
-                        orleansConfig.Globals.ProbeTimeout,
+                        this.clusterMembershipOptions.ProbeTimeout,
                         "Membership.ProbeTimer");
                     
                     timerProbeOtherSilos.Start();
                 };
+/* TODO - figure out how to wire up config changes using options - jbragg
                 orleansConfig.OnConfigChange(
                     "Globals/Liveness", () => this.RuntimeClient.Scheduler.RunOrQueueAction(configure, SchedulingContext), false);
+*/
 
                 configure();
                 logger.Info(ErrorCode.MembershipFinishBecomeActive, "-Finished BecomeActive.");
@@ -202,7 +206,7 @@ namespace Orleans.Runtime.MembershipService
                 OnIAmAliveUpdateInTableTimer,
                 null,
                 TimeSpan.Zero,
-                orleansConfig.Globals.IAmAliveTablePublishTimeout,
+                this.clusterMembershipOptions.IAmAliveTablePublishTimeout,
                 "Membership.IAmAliveTimer");
 
             timerIAmAliveUpdateInTable.Start();
@@ -245,7 +249,7 @@ namespace Orleans.Runtime.MembershipService
             try
             {
                 DisposeTimers();
-                if (this.membershipTableProvider is GrainBasedMembershipTable)
+                if (this.membershipTableProvider is SystemTargetBasedMembershipTable)
                 {
                     // do not execute KillMyself if using MembershipTableGrain, since it will fail, as we've already stopped app scheduler turns.
                     return;
@@ -323,7 +327,7 @@ namespace Orleans.Runtime.MembershipService
         // This simplified a lot of the races when we get gossip info which is outdated with the table truth.
         public async Task SiloStatusChangeNotification(SiloAddress updatedSilo, SiloStatus status)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-Received GOSSIP SiloStatusChangeNotification about {0} status {1}. Going to read the table.", updatedSilo, status);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Received GOSSIP SiloStatusChangeNotification about {0} status {1}. Going to read the table.", updatedSilo, status);
             if (IsFunctionalMBR(CurrentStatus))
             {
                 try
@@ -370,7 +374,7 @@ namespace Orleans.Runtime.MembershipService
         {
             Func<int, Task<bool>> cleanupTableEntriesTask = async counter => 
             {
-                if (logger.IsVerbose) logger.Verbose("-Attempting CleanupTableEntries #{0}", counter);
+                if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Attempting CleanupTableEntries #{0}", counter);
                 MembershipTableData table = await membershipTableProvider.ReadAll();
                 logger.Info(ErrorCode.MembershipReadAll_Cleanup, "-CleanupTable called on silo startup. Membership table {0}",
                     table.ToString());
@@ -378,7 +382,7 @@ namespace Orleans.Runtime.MembershipService
                 return await CleanupTableEntries(table);
             };
 
-            return MembershipExecuteWithRetries(cleanupTableEntriesTask, orleansConfig.Globals.MaxJoinAttemptTime);
+            return MembershipExecuteWithRetries(cleanupTableEntriesTask, this.clusterMembershipOptions.MaxJoinAttemptTime);
         }
 
         private async Task UpdateMyStatusGlobal(SiloStatus status)
@@ -391,15 +395,15 @@ namespace Orleans.Runtime.MembershipService
                 Func<int, Task<bool>> updateMyStatusTask = async counter =>
                 {
                     numCalls++;
-                    if (logger.IsVerbose) logger.Verbose("-Going to try to TryUpdateMyStatusGlobalOnce #{0}", counter);
+                    if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Going to try to TryUpdateMyStatusGlobalOnce #{0}", counter);
                     return await TryUpdateMyStatusGlobalOnce(status);  // function to retry
                 };
 
-                bool ok = await MembershipExecuteWithRetries(updateMyStatusTask, orleansConfig.Globals.MaxJoinAttemptTime);
+                bool ok = await MembershipExecuteWithRetries(updateMyStatusTask, this.clusterMembershipOptions.MaxJoinAttemptTime);
 
                 if (ok)
                 {
-                    if (logger.IsVerbose) logger.Verbose("-Silo {0} Successfully updated my Status in the Membership table to {1}", MyAddress.ToLongString(), status);
+                    if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Silo {0} Successfully updated my Status in the Membership table to {1}", MyAddress.ToLongString(), status);
                     membershipOracleData.UpdateMyStatusLocal(status);
                     GossipMyStatus();
                 }
@@ -441,7 +445,7 @@ namespace Orleans.Runtime.MembershipService
                 table = await membershipTableProvider.ReadRow(MyAddress);
             }
 
-            if (logger.IsVerbose) logger.Verbose("-TryUpdateMyStatusGlobalOnce: Read{0} Membership table {1}", (newStatus.Equals(SiloStatus.Active) ? "All" : " my entry from"), table.ToString());
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-TryUpdateMyStatusGlobalOnce: Read{0} Membership table {1}", (newStatus.Equals(SiloStatus.Active) ? "All" : " my entry from"), table.ToString());
             CheckMissedIAmAlives(table);
 
             MembershipEntry myEntry;
@@ -462,7 +466,7 @@ namespace Orleans.Runtime.MembershipService
             }
             else // first write attempt of this silo. Insert instead of Update.
             {
-                myEntry = membershipOracleData.CreateNewMembershipEntry(nodeConfig, newStatus);
+                myEntry = membershipOracleData.CreateNewMembershipEntry(newStatus);
             }
 
             var now = DateTime.UtcNow;
@@ -472,7 +476,7 @@ namespace Orleans.Runtime.MembershipService
             myEntry.Status = newStatus;
             myEntry.IAmAliveTime = now;
 
-            if (newStatus == SiloStatus.Active && orleansConfig.Globals.ValidateInitialConnectivity)
+            if (newStatus == SiloStatus.Active && this.clusterMembershipOptions.ValidateInitialConnectivity)
                 await GetJoiningPreconditionPromise(table);
             
             TableVersion next = table.Version.Next();
@@ -531,7 +535,7 @@ namespace Orleans.Runtime.MembershipService
         private async Task ProcessTableUpdate(MembershipTableData table, string caller, bool logAtInfoLevel = false)
         {
             if (logAtInfoLevel) logger.Info(ErrorCode.MembershipReadAll_1, "-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
-            else if (logger.IsVerbose) logger.Verbose("-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
+            else if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-ReadAll (called from {0}) Membership table {1}", caller, table.ToString());
 
             // Even if failed to clean up old entries from the table, still process the new entries. Will retry cleanup next time.
             try
@@ -626,11 +630,11 @@ namespace Orleans.Runtime.MembershipService
                 
                 if (entry.Status == SiloStatus.Dead)
                 {
-                    if (logger.IsVerbose2) logger.Verbose2("Skipping my previous old Dead entry in membership table: {0}", entry.ToFullString());
+                    if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("Skipping my previous old Dead entry in membership table: {0}", entry.ToFullString());
                     continue;
                 }
 
-                if (logger.IsVerbose) logger.Verbose("Temporal anomaly detected in membership table -- Me={0} Other me={1}",
+                if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("Temporal anomaly detected in membership table -- Me={0} Other me={1}",
                     MyAddress.ToLongString(), siloAddress.ToLongString());
 
                 // Temporal paradox - There is an older clone of this silo in the membership table
@@ -644,7 +648,7 @@ namespace Orleans.Runtime.MembershipService
                 else if (siloAddress.Generation > MyAddress.Generation)
                 {
                     // I am the older clone - Newer version of me should survive - I need to kill myself
-                    var msg = string.Format("Detected newer version of myself - I am the older clone so will commit suicide -- Current Me={0} Newer Me={1}, Current entry= {2}",
+                    var msg = string.Format("Detected newer version of myself - I am the older clone so I will stop -- Current Me={0} Newer Me={1}, Current entry= {2}",
                         MyAddress.ToLongString(), siloAddress.ToLongString(), entry.ToFullString());
                     logger.Warn(ErrorCode.MembershipDetectedNewer, msg);
                     await KillMyself();
@@ -656,7 +660,7 @@ namespace Orleans.Runtime.MembershipService
 
             if (silosToDeclareDead.Count == 0) return true;
 
-            if (logger.IsVerbose) logger.Verbose("CleanupTableEntries: About to DeclareDead {0} outdated silos in the table: {1}", silosToDeclareDead.Count,
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("CleanupTableEntries: About to DeclareDead {0} outdated silos in the table: {1}", silosToDeclareDead.Count,
                 Utils.EnumerableToString(silosToDeclareDead.Select(tuple => tuple.Item1), entry => entry.ToString()));
 
             var retValues = new List<bool>();
@@ -675,14 +679,14 @@ namespace Orleans.Runtime.MembershipService
 
         private void KillMyselfLocally(string reason)
         {
-            var msg = "I have been told I am dead, so this silo will commit suicide! " + reason;
+            var msg = "I have been told I am dead, so this silo will stop! " + reason;
             logger.Error(ErrorCode.MembershipKillMyselfLocally, msg);
             bool alreadyStopping = CurrentStatus.IsTerminating();
 
             DisposeTimers();
             membershipOracleData.UpdateMyStatusLocal(SiloStatus.Dead);
 
-            if (!alreadyStopping || !orleansConfig.IsRunningAsUnitTest)
+            if (!alreadyStopping || !this.clusterMembershipOptions.IsRunningAsUnitTest)
             {
                 logger.Fail(ErrorCode.MembershipKillMyselfLocally, msg);
             }
@@ -696,12 +700,12 @@ namespace Orleans.Runtime.MembershipService
 
         private void GossipToOthers(SiloAddress updatedSilo, SiloStatus updatedStatus)
         {
-            if (!orleansConfig.Globals.UseLivenessGossip) return;
+            if (!this.clusterMembershipOptions.UseLivenessGossip) return;
 
             // spread the rumor that some silo has just been marked dead
             foreach (var silo in membershipOracleData.GetSiloStatuses(IsFunctionalMBR, false).Keys)
             {
-                if (logger.IsVerbose2) logger.Verbose2("-Sending status update GOSSIP notification about silo {0}, status {1}, to silo {2}", updatedSilo.ToLongString(), updatedStatus, silo.ToLongString());
+                if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Sending status update GOSSIP notification about silo {0}, status {1}, to silo {2}", updatedSilo.ToLongString(), updatedStatus, silo.ToLongString());
                 GetOracleReference(silo)
                     .SiloStatusChangeNotification(updatedSilo, updatedStatus)
                     .ContinueWith(task =>
@@ -743,10 +747,10 @@ namespace Orleans.Runtime.MembershipService
             var silosToWatch = new List<SiloAddress>();
             var additionalSilos = new List<SiloAddress>();
 
-            for (int i = 0; i < tmpList.Count - 1 && silosToWatch.Count < orleansConfig.Globals.NumProbedSilos; i++)
+            for (int i = 0; i < tmpList.Count - 1 && silosToWatch.Count < this.clusterMembershipOptions.NumProbedSilos; i++)
             {
                 SiloAddress candidate = tmpList[(myIndex + i + 1) % tmpList.Count];
-                bool isSuspected = membershipOracleData.GetSiloEntry(candidate).GetFreshVotes(orleansConfig.Globals.DeathVoteExpirationTimeout).Count > 0;
+                bool isSuspected = membershipOracleData.GetSiloEntry(candidate).GetFreshVotes(this.clusterMembershipOptions.DeathVoteExpirationTimeout).Count > 0;
                 if (isSuspected)
                 {
                     additionalSilos.Add(candidate);
@@ -785,7 +789,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void OnGetTableUpdateTimer(object data)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-{0} fired {1}. CurrentStatus {2}", timerGetTableUpdates.Name, timerGetTableUpdates.GetNumTicks(), CurrentStatus);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-{0} fired {1}. CurrentStatus {2}", timerGetTableUpdates.Name, timerGetTableUpdates.GetNumTicks(), CurrentStatus);
 
             timerGetTableUpdates.CheckTimerDelay();
 
@@ -808,7 +812,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void OnProbeOtherSilosTimer(object data)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-{0} fired {1}. CurrentStatus {2}", timerProbeOtherSilos.Name, timerProbeOtherSilos.GetNumTicks(), CurrentStatus);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-{0} fired {1}. CurrentStatus {2}", timerProbeOtherSilos.Name, timerProbeOtherSilos.GetNumTicks(), CurrentStatus);
 
             timerProbeOtherSilos.CheckTimerDelay();
 
@@ -853,7 +857,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void OnIAmAliveUpdateInTableTimer(object data)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-{0} fired {1}. CurrentStatus {2}", timerIAmAliveUpdateInTable.Name, timerIAmAliveUpdateInTable.GetNumTicks(), CurrentStatus);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-{0} fired {1}. CurrentStatus {2}", timerIAmAliveUpdateInTable.Name, timerIAmAliveUpdateInTable.GetNumTicks(), CurrentStatus);
 
             timerIAmAliveUpdateInTable.CheckTimerDelay();
 
@@ -878,7 +882,7 @@ namespace Orleans.Runtime.MembershipService
 
         private Task SendPing(SiloAddress siloAddress, int pingNumber)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-Going to send Ping #{0} to probe silo {1}", pingNumber, siloAddress.ToLongString());
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Going to send Ping #{0} to probe silo {1}", pingNumber, siloAddress.ToLongString());
             Task pingTask;
             try
             {
@@ -897,7 +901,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void ResetFailedProbes(SiloAddress silo, int pingNumber)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-Got successful ping response for ping #{0} from {1}", pingNumber, silo.ToLongString());
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Got successful ping response for ping #{0} from {1}", pingNumber, silo.ToLongString());
             MessagingStatisticsGroup.OnPingReplyReceived(silo);
             if (probedSilos.ContainsKey(silo))
             {
@@ -912,7 +916,7 @@ namespace Orleans.Runtime.MembershipService
             MessagingStatisticsGroup.OnPingReplyMissed(silo);
             if (!probedSilos.ContainsKey(silo))
             {
-                // need this check to avoid races with changed membership (I was watching him, but then read the table, learned he is already dead and thus no longer wtaching him); 
+                // need this check to avoid races with changed membership (I was watching him, but then read the table, learned he is already dead and thus no longer watching him);
                 // otherwise, we might here insert a new entry to the 'probedSilos' dictionary
                 logger.Info(ErrorCode.MembershipPingedSiloNotInWatchList, "-Does not have {0} in the list of probes, ignoring", silo.ToLongString());
                 return;
@@ -922,12 +926,12 @@ namespace Orleans.Runtime.MembershipService
 
             probedSilos[silo] = probedSilos[silo] + 1;
 
-            if (logger.IsVerbose2) logger.Verbose2("-Current number of failed probes for {0}: {1}", silo.ToLongString(), probedSilos[silo]);
-            if (probedSilos[silo] < orleansConfig.Globals.NumMissedProbesLimit)
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Current number of failed probes for {0}: {1}", silo.ToLongString(), probedSilos[silo]);
+            if (probedSilos[silo] < this.clusterMembershipOptions.NumMissedProbesLimit)
                 return;
             
             MembershipExecuteWithRetries(
-                _ => TryToSuspectOrKill(silo), orleansConfig.Globals.MaxJoinAttemptTime)
+                _ => TryToSuspectOrKill(silo), this.clusterMembershipOptions.MaxJoinAttemptTime)
                 .ContinueWith(task =>
                 {
                     if (task.IsFaulted)
@@ -950,7 +954,7 @@ namespace Orleans.Runtime.MembershipService
         {
             MembershipTableData table = await membershipTableProvider.ReadAll();
 
-            if (logger.IsVerbose) logger.Verbose("-TryToSuspectOrKill: Read Membership table {0}", table.ToString());
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-TryToSuspectOrKill: Read Membership table {0}", table.ToString());
             if (table.Contains(MyAddress))
             {
                 var myEntry = table.Get(MyAddress).Item1;
@@ -974,7 +978,11 @@ namespace Orleans.Runtime.MembershipService
             var tuple = table.Get(silo);
             var entry = tuple.Item1;
             string eTag = tuple.Item2;
-            if (logger.IsVerbose) logger.Verbose("-TryToSuspectOrKill {0}: The current status of {0} in the table is {1}, its entry is {2}", entry.SiloAddress.ToLongString(), entry.Status, entry.ToFullString());
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-TryToSuspectOrKill {siloAddress}: The current status of {siloAddress} in the table is {status}, its entry is {entry}",
+                entry.SiloAddress.ToLongString(), // First
+                entry.SiloAddress.ToLongString(), // Second
+                entry.Status, 
+                entry.ToFullString());
             // check if the table already knows that this silo is dead
             if (entry.Status == SiloStatus.Dead)
             {
@@ -989,17 +997,17 @@ namespace Orleans.Runtime.MembershipService
             var allVotes = entry.SuspectTimes ?? new List<Tuple<SiloAddress, DateTime>>();
 
             // get all valid (non-expired) votes
-            var freshVotes = entry.GetFreshVotes(orleansConfig.Globals.DeathVoteExpirationTimeout);
+            var freshVotes = entry.GetFreshVotes(this.clusterMembershipOptions.DeathVoteExpirationTimeout);
 
-            if (logger.IsVerbose2) logger.Verbose2("-Current number of fresh Voters for {0} is {1}", silo.ToLongString(), freshVotes.Count.ToString());
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-Current number of fresh Voters for {0} is {1}", silo.ToLongString(), freshVotes.Count.ToString());
 
-            if (freshVotes.Count >= orleansConfig.Globals.NumVotesForDeathDeclaration)
+            if (freshVotes.Count >= this.clusterMembershipOptions.NumVotesForDeathDeclaration)
             {
                 // this should not happen ...
                 var str = String.Format("-Silo {0} is suspected by {1} which is more or equal than {2}, but is not marked as dead. This is a bug!!!",
-                    entry.SiloAddress.ToLongString(), freshVotes.Count.ToString(), orleansConfig.Globals.NumVotesForDeathDeclaration.ToString());
+                    entry.SiloAddress.ToLongString(), freshVotes.Count.ToString(), this.clusterMembershipOptions.NumVotesForDeathDeclaration.ToString());
                 logger.Error(ErrorCode.Runtime_Error_100053, str);
-                KillMyselfLocally("Found a bug 1! Will commit suicide.");
+                KillMyselfLocally("Found a bug! Will stop.");
                 return false;
             }
 
@@ -1014,7 +1022,7 @@ namespace Orleans.Runtime.MembershipService
             bool declareDead = false;
             int myAdditionalVote = myVoteIndex == -1 ? 1 : 0;
 
-            if (freshVotes.Count + myAdditionalVote >= orleansConfig.Globals.NumVotesForDeathDeclaration)
+            if (freshVotes.Count + myAdditionalVote >= this.clusterMembershipOptions.NumVotesForDeathDeclaration)
                 declareDead = true;
             
             if (freshVotes.Count + myAdditionalVote >= (activeSilos + 1) / 2)
@@ -1027,8 +1035,8 @@ namespace Orleans.Runtime.MembershipService
                     "-Going to mark silo {0} as DEAD in the table #1. I am the last voter: #freshVotes={1}, myVoteIndex = {2}, NumVotesForDeathDeclaration={3} , #activeSilos={4}, suspect list={5}",
                             entry.SiloAddress.ToLongString(), 
                             freshVotes.Count, 
-                            myVoteIndex, 
-                            orleansConfig.Globals.NumVotesForDeathDeclaration, 
+                            myVoteIndex,
+                            this.clusterMembershipOptions.NumVotesForDeathDeclaration, 
                             activeSilos, 
                             PrintSuspectList(allVotes));
                 return await DeclareDead(entry, eTag, table.Version);
@@ -1043,7 +1051,7 @@ namespace Orleans.Runtime.MembershipService
             if (indexToWrite == -1)
             {
                 // My vote is not recorded. Find the most outdated vote if the list is full, and overwrite it
-                if (allVotes.Count >= orleansConfig.Globals.NumVotesForDeathDeclaration) // if the list is full
+                if (allVotes.Count >= this.clusterMembershipOptions.NumVotesForDeathDeclaration) // if the list is full
                 {
                     // The list is full.
                     DateTime minVoteTime = allVotes.Min(voter => voter.Item2); // pick the most outdated vote
@@ -1077,17 +1085,17 @@ namespace Orleans.Runtime.MembershipService
 
         private async Task<bool> DeclareDead(MembershipEntry entry, string etag, TableVersion tableVersion)
         {
-            if (orleansConfig.Globals.LivenessEnabled)
+            if (this.clusterMembershipOptions.LivenessEnabled)
             {
                 // add the killer (myself) to the suspect list, for easier diagnosis later on.
                 entry.AddSuspector(MyAddress, DateTime.UtcNow);
 
-                if (logger.IsVerbose) logger.Verbose("-Going to DeclareDead silo {0} in the table. About to write entry {1}.", entry.SiloAddress.ToLongString(), entry.ToFullString());
+                if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Going to DeclareDead silo {0} in the table. About to write entry {1}.", entry.SiloAddress.ToLongString(), entry.ToFullString());
                 entry.Status = SiloStatus.Dead;
                 bool ok = await membershipTableProvider.UpdateRow(entry, etag, tableVersion.Next());
                 if (ok)
                 {
-                    if (logger.IsVerbose) logger.Verbose("-Successfully updated {0} status to Dead in the Membership table.", entry.SiloAddress.ToLongString());
+                    if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Successfully updated {0} status to Dead in the Membership table.", entry.SiloAddress.ToLongString());
                     if (!entry.SiloAddress.Endpoint.Equals(MyAddress.Endpoint))
                     {
                         bool changed = membershipOracleData.TryUpdateStatusAndNotify(entry);

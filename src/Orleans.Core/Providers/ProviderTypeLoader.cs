@@ -12,8 +12,8 @@ namespace Orleans.Providers
     internal class LoadedProviderTypeLoaders
     {
         internal ConcurrentBag<ProviderTypeLoader> Managers { get; private set; }
-        private readonly Logger logger;
-        public LoadedProviderTypeLoaders(LoggerWrapper<LoadedProviderTypeLoaders> logger)
+        private readonly ILogger logger;
+        public LoadedProviderTypeLoaders(ILogger<LoadedProviderTypeLoaders> logger)
         {
             this.Managers = new ConcurrentBag<ProviderTypeLoader>();
             AppDomain.CurrentDomain.AssemblyLoad += ProcessNewAssembly;
@@ -28,21 +28,16 @@ namespace Orleans.Providers
                 return;
             }
 
-            // We do this under the lock to avoid race conditions when an assembly is added 
-            // while a type manager is initializing.
-            lock (this.Managers)
+            // We assume that it's better to fetch and iterate through the list of types once,
+            // and the list of TypeManagers many times, rather than the other way around.
+            // Certainly it can't be *less* efficient to do it this way.
+            foreach (var type in TypeUtils.GetDefinedTypes(args.LoadedAssembly, logger))
             {
-                // We assume that it's better to fetch and iterate through the list of types once,
-                // and the list of TypeManagers many times, rather than the other way around.
-                // Certainly it can't be *less* efficient to do it this way.
-                foreach (var type in TypeUtils.GetDefinedTypes(args.LoadedAssembly, logger))
+                foreach (var mgr in Managers.ToArray()) //take a copy of the list of managers
                 {
-                    foreach (var mgr in Managers)
+                    if (mgr.IsActive)
                     {
-                        if (mgr.IsActive)
-                        {
-                            mgr.ProcessType(type);
-                        }
+                        mgr.ProcessType(type);
                     }
                 }
             }
@@ -56,7 +51,7 @@ namespace Orleans.Providers
         private readonly HashSet<Type> alreadyProcessed;
         public bool IsActive { get; set; }
 
-        private readonly Logger logger;
+        private readonly ILogger logger;
 
 
         public ProviderTypeLoader(Func<Type, bool> condition, Action<Type> action, ILoggerFactory loggerFactory)
@@ -64,32 +59,25 @@ namespace Orleans.Providers
             this.condition = condition;
             callback = action;
             alreadyProcessed = new HashSet<Type>();
-            this.logger = new LoggerWrapper<ProviderTypeLoader>(loggerFactory);
+            this.logger = loggerFactory.CreateLogger<ProviderTypeLoader>();
             IsActive = true;
          }
 
         public static void AddProviderTypeManager(Func<Type, bool> condition, Action<Type> action, LoadedProviderTypeLoaders loadedProviderTypeLoadersSingleton, ILoggerFactory loggerFactory)
         {
             var manager = new ProviderTypeLoader(condition, action, loggerFactory);
-            lock (loadedProviderTypeLoadersSingleton.Managers)
-            {
-                loadedProviderTypeLoadersSingleton.Managers.Add(manager);
-            }
-
+            loadedProviderTypeLoadersSingleton.Managers.Add(manager);
             manager.ProcessLoadedAssemblies(loadedProviderTypeLoadersSingleton);
         }
 
         private void ProcessLoadedAssemblies(LoadedProviderTypeLoaders loadedProviderTypeLoadersSingleton)
         {
-            lock (loadedProviderTypeLoadersSingleton.Managers)
+            // Walk through already-loaded assemblies. 
+            // We do this under the lock to avoid race conditions when an assembly is added 
+            // while a type manager is initializing.
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                // Walk through already-loaded assemblies. 
-                // We do this under the lock to avoid race conditions when an assembly is added 
-                // while a type manager is initializing.
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    ProcessAssemblyLocally(assembly);
-                }
+                ProcessAssemblyLocally(assembly);
             }
         }
 

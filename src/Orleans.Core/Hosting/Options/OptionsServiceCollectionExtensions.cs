@@ -5,7 +5,7 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-namespace Orleans.Hosting
+namespace Orleans.Configuration
 {
     /// <summary>
     /// Extension methods for adding options services to the DI container. This will be deprecated and superseded Mirosoft.Extensions.Options v2.1.0.0 once it ships.
@@ -18,7 +18,8 @@ namespace Orleans.Hosting
         /// <typeparam name="TOptions">The options type to be configured.</typeparam>
         /// <param name="services">The <see cref="IServiceCollection"/> to add the services to.</param>
         /// <returns>The <see cref="OptionsBuilder{TOptions}"/> so that configure calls can be chained in it.</returns>
-        public static OptionsBuilder<TOptions> AddOptions<TOptions>(this IServiceCollection services) where TOptions : class
+        public static OptionsBuilder<TOptions> AddOptions<TOptions>(this IServiceCollection services)
+            where TOptions : class
             => services.AddOptions<TOptions>(Options.DefaultName);
 
         /// <summary>

@@ -45,9 +45,8 @@ namespace Orleans.CodeGenerator
         /// <param name="grainType">
         /// The grain interface type.
         /// </param>
-        /// <param name="onEncounteredType">
-        /// The callback which is invoked when a type is encountered.
-        /// </param>
+        /// <param name="generatedTypeName">Name of the generated type.</param>
+        /// <param name="onEncounteredType">The callback which is invoked when a type is encountered.</param>
         /// <returns>
         /// The generated class.
         /// </returns>
@@ -237,7 +236,17 @@ namespace Orleans.CodeGenerator
                         invocation = invocation.AddArgumentListArguments(options);
                     }
 
-                    body.Add(SF.ReturnStatement(invocation));
+                    ExpressionSyntax returnContent = invocation;
+                    if (method.ReturnType.IsGenericType 
+                        && method.ReturnType.GetGenericTypeDefinition().FullName == "System.Threading.Tasks.ValueTask`1")
+                    {
+                        // Wrapping invocation expression with initialization of ValueTask (e.g. new ValueTask<int>(base.InvokeMethod()))
+                        returnContent =
+                            SF.ObjectCreationExpression(method.ReturnType.GetTypeSyntax())
+                                .AddArgumentListArguments(SF.Argument(SF.ExpressionStatement(invocation).Expression));
+                    }
+
+                    body.Add(SF.ReturnStatement(returnContent));
                 }
 
                 members.Add(method.GetDeclarationSyntax().AddBodyStatements(body.ToArray()));

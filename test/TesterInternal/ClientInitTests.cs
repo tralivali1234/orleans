@@ -7,22 +7,38 @@ using Tester;
 using TestExtensions;
 using Xunit;
 using Orleans.Logging;
+using System.Threading.Tasks;
+using UnitTests.GrainInterfaces;
 
 #pragma warning disable CS0618 // Type or member is obsolete
 namespace UnitTests
 {
-    public class ClientInitTests : OrleansTestingBase, IClassFixture<DefaultClusterFixture>
+    public class ClientInitTests : OrleansTestingBase, IClassFixture<ClientInitTests.Fixture>
     {
-        public ClientInitTests(DefaultClusterFixture fixture)
+        private readonly Fixture fixture;
+
+
+        public class Fixture : BaseTestClusterFixture
         {
-            this.HostedCluster = fixture.HostedCluster;
-            if (!GrainClient.IsInitialized)
+            public ClientConfiguration ClientConfiguration { get; private set; }
+
+            protected override void ConfigureTestCluster(TestClusterBuilder builder)
             {
-                GrainClient.Initialize(fixture.HostedCluster.ClientConfiguration);
+                builder.ConfigureLegacyConfiguration(legacy => this.ClientConfiguration = legacy.ClientConfiguration);
             }
         }
 
-        protected TestCluster HostedCluster { get; set; }
+        public ClientInitTests(Fixture fixture)
+        {
+            this.fixture = fixture;
+            if (!GrainClient.IsInitialized)
+            {
+                GrainClient.ConfigureClientDelegate = null;
+                GrainClient.Initialize(fixture.ClientConfiguration);
+            }
+        }
+
+        protected TestCluster HostedCluster => this.fixture.HostedCluster;
 
         [Fact, TestCategory("Functional"), TestCategory("Client")]
         public void ClientInit_IsInitialized()
@@ -45,7 +61,7 @@ namespace UnitTests
             GrainClient.Uninitialize();
             Assert.False(GrainClient.IsInitialized);
 
-            GrainClient.Initialize(HostedCluster.ClientConfiguration);
+            GrainClient.Initialize(fixture.ClientConfiguration);
             Assert.True(GrainClient.IsInitialized);
         }
 
@@ -54,17 +70,17 @@ namespace UnitTests
         {
             // First initialize will have been done by orleans unit test base class
 
-            GrainClient.Initialize(HostedCluster.ClientConfiguration);
+            GrainClient.Initialize(this.fixture.ClientConfiguration);
             Assert.True(GrainClient.IsInitialized);
 
-            GrainClient.Initialize(HostedCluster.ClientConfiguration);
+            GrainClient.Initialize(this.fixture.ClientConfiguration);
             Assert.True(GrainClient.IsInitialized);
         }
 
         [Fact, TestCategory("Functional"), TestCategory("Client")]
         public void ClientInit_ErrorDuringInitialize()
         {
-            ClientConfiguration cfg = TestClusterOptions.BuildClientConfiguration(HostedCluster.ClusterConfiguration);
+            ClientConfiguration cfg = this.fixture.ClientConfiguration;
 
             // First initialize will have been done by orleans unit test base class, so uninitialize back to null state
             GrainClient.Uninitialize();
@@ -93,17 +109,26 @@ namespace UnitTests
         [Fact, TestCategory("Functional"), TestCategory("Client")]
         public void ClientInit_InitializeUnThenReInit()
         {
-            GrainClient.Initialize(HostedCluster.ClientConfiguration);
+            GrainClient.Initialize(this.fixture.ClientConfiguration);
             Assert.True(GrainClient.IsInitialized);
 
             GrainClient.Uninitialize();
             Assert.False(GrainClient.IsInitialized);
 
-            GrainClient.Initialize(HostedCluster.ClientConfiguration);
+            GrainClient.Initialize(this.fixture.ClientConfiguration);
             Assert.True(GrainClient.IsInitialized);
 
             GrainClient.Uninitialize();
             Assert.False(GrainClient.IsInitialized);
+        }
+
+        [Fact, TestCategory("Functional"), TestCategory("Client")]
+        public void ClientInit_InitializeWithDelegate()
+        {
+            var wasCalled = false;
+            GrainClient.ConfigureClientDelegate = clientBuilder => wasCalled = true;
+            GrainClient.Initialize(this.fixture.ClientConfiguration);
+            Assert.True(wasCalled);
         }
     }
 }

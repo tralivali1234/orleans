@@ -7,10 +7,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="$(MicrosoftTestSdkVersion)" />
     <PackageReference Include="xunit" Version="$(xUnitVersion)" />
-    <ProjectReference Include="..\..\src\Orleans.Core.Abstractions\Orleans.Core.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Orleans.Runtime\Orleans.Runtime.csproj" />
-    <ProjectReference Include="..\TestGrainInterfaces\TestGrainInterfaces.csproj" />
-    <ProjectReference Include="..\TestGrains\TestGrains.csproj" />
+    <DotNetCliToolReference Include="dotnet-xunit" Version="$(xUnitVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Grains\TestGrainInterfaces\TestGrainInterfaces.csproj" />
+    <ProjectReference Include="..\Grains\TestGrains\TestGrains.csproj" />
   </ItemGroup>
   
 </Project>

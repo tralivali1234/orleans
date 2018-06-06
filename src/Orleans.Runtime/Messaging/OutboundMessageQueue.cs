@@ -4,7 +4,7 @@ using System.Threading;
 using Microsoft.Extensions.Logging;
 using Orleans.Serialization;
 using Microsoft.Extensions.Options;
-using Orleans.Hosting;
+using Orleans.Configuration;
 
 namespace Orleans.Runtime.Messaging
 {
@@ -15,7 +15,7 @@ namespace Orleans.Runtime.Messaging
         private readonly SiloMessageSender pingSender;
         private readonly SiloMessageSender systemSender;
         private readonly MessageCenter messageCenter;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         private bool stopped;
 
         public int Count
@@ -47,7 +47,7 @@ namespace Orleans.Runtime.Messaging
                     return sender;
                 }, LazyThreadSafetyMode.ExecutionAndPublication);
             }
-            logger = new LoggerWrapper<OutboundMessageQueue>(loggerFactory);
+            logger = loggerFactory.CreateLogger<OutboundMessageQueue>();
             stopped = false;
         }
 
@@ -85,15 +85,8 @@ namespace Orleans.Runtime.Messaging
                 messageCenter.SendRejection(msg, Message.RejectionTypes.Unrecoverable, "Message to be sent does not have a target silo");
                 return;
             }
-
-            // Shortcut messages to this silo
-            if (msg.TargetSilo.Equals(messageCenter.MyAddress))
-            {
-                if (logger.IsVerbose3) logger.Verbose3("Message has been looped back to this silo: {0}", msg);
-                MessagingStatisticsGroup.LocalMessagesSent.Increment();
-                messageCenter.InboundQueue.PostMessage(msg);
-            }
-            else
+            
+            if(!messageCenter.TrySendLocal(msg))
             {
                 if (stopped)
                 {

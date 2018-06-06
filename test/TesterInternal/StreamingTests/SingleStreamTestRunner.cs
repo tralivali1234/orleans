@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Runtime;
 using Orleans.Streams;
@@ -23,7 +24,7 @@ namespace UnitTests.StreamingTests
         private ConsumerProxy consumer;
         private const int Many = 3;
         private const int ItemCount = 10;
-        private Logger logger;
+        private ILogger logger;
         private readonly string streamProviderName;
         private readonly int testNumber;
         private readonly bool runFullTest;
@@ -34,7 +35,7 @@ namespace UnitTests.StreamingTests
         {
             this.client = client;
             this.streamProviderName = streamProvider;
-            this.logger = new LoggerWrapper<SingleStreamTestRunner>(TestingUtils.CreateDefaultLoggerFactory($"{this.GetType().Name}.log"));
+            this.logger = TestingUtils.CreateDefaultLoggerFactory($"{this.GetType().Name}.log").CreateLogger<SingleStreamTestRunner>();
             this.testNumber = testNum;
             this.runFullTest = fullTest;
             this.random = TestConstants.random;
@@ -509,7 +510,13 @@ namespace UnitTests.StreamingTests
                 activationCount = await consumer.GetNumActivations(this.client);
             }
             var expectActivationCount = 0;
-            logger.Info("Test {0} CheckGrainsDeactivated: {1}ActivationCount = {2}, Expected{1}ActivationCount = {3}", testNumber, str, activationCount, expectActivationCount);
+            logger.Info(
+                "Test {testNumber} CheckGrainsDeactivated: {type}ActivationCount = {activationCount}, Expected{type}ActivationCount = {expectActivationCount}", 
+                testNumber, 
+                str, 
+                activationCount, 
+                str,
+                expectActivationCount);
             if (assertAreEqual)
             {
                 Assert.Equal(expectActivationCount,  activationCount); // String.Format("Expected{0}ActivationCount = {1}, {0}ActivationCount = {2}", str, expectActivationCount, activationCount));

@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Orleans.Runtime.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Text;
+using Orleans.Configuration;
 
 namespace Orleans.Runtime.MembershipService
 {
@@ -15,23 +17,24 @@ namespace Orleans.Runtime.MembershipService
         private List<SiloAddress> localMultiClusterGatewaysCopy;               // a cached copy of the silos that are designated gateways
 
         private readonly List<ISiloStatusListener> statusListeners;
-        private readonly Logger logger;
+        private readonly ILogger logger;
         
         private IntValueStatistic clusterSizeStatistic;
         private StringValueStatistic clusterStatistic;
 
         internal readonly DateTime SiloStartTime;
         internal readonly SiloAddress MyAddress;
+        internal readonly int MyProxyPort;
         internal readonly string MyHostname;
         internal SiloStatus CurrentStatus { get; private set; } // current status of this silo.
-        internal string SiloName { get; private set; } // name of this silo.
+        internal string SiloName { get; } // name of this silo.
 
         private readonly bool multiClusterActive; // set by configuration if multicluster is active
         private readonly int maxMultiClusterGateways; // set by configuration
 
         private UpdateFaultCombo myFaultAndUpdateZones;
-
-        internal MembershipOracleData(ILocalSiloDetails siloDetails, NodeConfiguration nodeConfiguration, GlobalConfiguration globalConfig, Logger log)
+        
+        internal MembershipOracleData(ILocalSiloDetails siloDetails, ILogger log, MultiClusterOptions multiClusterOptions)
         {
             logger = log;
             localTable = new Dictionary<SiloAddress, MembershipEntry>();  
@@ -43,10 +46,11 @@ namespace Orleans.Runtime.MembershipService
             
             SiloStartTime = DateTime.UtcNow;
             MyAddress = siloDetails.SiloAddress;
-            MyHostname = nodeConfiguration.DNSHostName;
+            MyHostname = siloDetails.DnsHostName;
+            MyProxyPort = siloDetails.GatewayAddress?.Endpoint?.Port ?? 0;
             SiloName = siloDetails.Name;
-            this.multiClusterActive = globalConfig.HasMultiClusterNetwork;
-            this.maxMultiClusterGateways = globalConfig.MaxMultiClusterGateways;
+            this.multiClusterActive = multiClusterOptions.HasMultiClusterNetwork;
+            this.maxMultiClusterGateways = multiClusterOptions.MaxMultiClusterGateways;
             CurrentStatus = SiloStatus.Created;
             clusterSizeStatistic = IntValueStatistic.FindOrCreate(StatisticNames.MEMBERSHIP_ACTIVE_CLUSTER_SIZE, () => localTableCopyOnlyActive.Count);
             clusterStatistic = StringValueStatistic.FindOrCreate(StatisticNames.MEMBERSHIP_ACTIVE_CLUSTER,
@@ -71,11 +75,11 @@ namespace Orleans.Runtime.MembershipService
                 if (!localTableCopy.TryGetValue(siloAddress, out status))
                 {
                     if (CurrentStatus == SiloStatus.Active)
-                        if (logger.IsVerbose) logger.Verbose(ErrorCode.Runtime_Error_100209, "-The given siloAddress {0} is not registered in this MembershipOracle.", siloAddress.ToLongString());
+                        if (logger.IsEnabled(LogLevel.Debug)) logger.Debug(ErrorCode.Runtime_Error_100209, "-The given siloAddress {0} is not registered in this MembershipOracle.", siloAddress.ToLongString());
                     status = SiloStatus.None;
                 }
             }
-            if (logger.IsVerbose3) logger.Verbose3("-GetApproximateSiloStatus returned {0} for silo: {1}", status, siloAddress.ToLongString());
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-GetApproximateSiloStatus returned {0} for silo: {1}", status, siloAddress.ToLongString());
             return status;
         }
 
@@ -83,13 +87,13 @@ namespace Orleans.Runtime.MembershipService
         internal Dictionary<SiloAddress, SiloStatus> GetApproximateSiloStatuses(bool onlyActive = false)
         {
             Dictionary<SiloAddress, SiloStatus> dict = onlyActive ? localTableCopyOnlyActive : localTableCopy;
-            if (logger.IsVerbose3) logger.Verbose3("-GetApproximateSiloStatuses returned {0} silos: {1}", dict.Count, Utils.DictionaryToString(dict));
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-GetApproximateSiloStatuses returned {0} silos: {1}", dict.Count, Utils.DictionaryToString(dict));
             return dict;
         }
 
         internal List<SiloAddress> GetApproximateMultiClusterGateways()
         {
-            if (logger.IsVerbose3) logger.Verbose3("-GetApproximateMultiClusterGateways returned {0} silos: {1}", localMultiClusterGatewaysCopy.Count, string.Join(",", localMultiClusterGatewaysCopy));
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-GetApproximateMultiClusterGateways returned {0} silos: {1}", localMultiClusterGatewaysCopy.Count, string.Join(",", localMultiClusterGatewaysCopy));
             return localMultiClusterGatewaysCopy;
         }
 
@@ -179,12 +183,12 @@ namespace Orleans.Runtime.MembershipService
             return dict;
         }
 
-        internal MembershipEntry CreateNewMembershipEntry(NodeConfiguration nodeConf, SiloStatus myStatus)
+        internal MembershipEntry CreateNewMembershipEntry(SiloStatus myStatus)
         {
-            return CreateNewMembershipEntry(nodeConf, MyAddress, MyHostname, myStatus, SiloStartTime);
+            return CreateNewMembershipEntry(SiloName, MyAddress, MyProxyPort, MyHostname, myStatus, SiloStartTime);
         }
 
-        private static MembershipEntry CreateNewMembershipEntry(NodeConfiguration nodeConf, SiloAddress myAddress, string myHostname, SiloStatus myStatus, DateTime startTime)
+        private static MembershipEntry CreateNewMembershipEntry(string siloName, SiloAddress myAddress, int proxyPort, string myHostname, SiloStatus myStatus, DateTime startTime)
         {
             var assy = Assembly.GetEntryAssembly() ?? typeof(MembershipOracleData).GetTypeInfo().Assembly;
             var roleName = assy.GetName().Name;
@@ -194,10 +198,10 @@ namespace Orleans.Runtime.MembershipService
                 SiloAddress = myAddress,
 
                 HostName = myHostname,
-                SiloName = nodeConf.SiloName,
+                SiloName = siloName,
 
                 Status = myStatus,
-                ProxyPort = (nodeConf.IsGatewayNode ? nodeConf.ProxyGatewayEndpoint.Port : 0),
+                ProxyPort = proxyPort,
 
                 RoleName = roleName,
                 
@@ -211,6 +215,11 @@ namespace Orleans.Runtime.MembershipService
         internal void UpdateMyFaultAndUpdateZone(MembershipEntry entry)
         {
             this.myFaultAndUpdateZones = new UpdateFaultCombo(entry.UpdateZone, entry.FaultZone);
+
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug($"-Updated my FaultZone={entry.FaultZone} UpdateZone={entry.UpdateZone}");
+
+            if (this.multiClusterActive)
+                localMultiClusterGatewaysCopy = DetermineMultiClusterGateways();
         }
 
         internal bool TryUpdateStatusAndNotify(MembershipEntry entry)
@@ -224,7 +233,7 @@ namespace Orleans.Runtime.MembershipService
             if (this.multiClusterActive)
                 localMultiClusterGatewaysCopy = DetermineMultiClusterGateways();
 
-            if (logger.IsVerbose) logger.Verbose("-Updated my local view of {0} status. It is now {1}.", entry.SiloAddress.ToLongString(), GetSiloStatus(entry.SiloAddress));
+            if (logger.IsEnabled(LogLevel.Debug)) logger.Debug("-Updated my local view of {0} status. It is now {1}.", entry.SiloAddress.ToLongString(), GetSiloStatus(entry.SiloAddress));
 
             NotifyLocalSubscribers(entry.SiloAddress, entry.Status);
             return true;
@@ -251,7 +260,7 @@ namespace Orleans.Runtime.MembershipService
 
         private void NotifyLocalSubscribers(SiloAddress siloAddress, SiloStatus newStatus)
         {
-            if (logger.IsVerbose2) logger.Verbose2("-NotifyLocalSubscribers about {0} status {1}", siloAddress.ToLongString(), newStatus);
+            if (logger.IsEnabled(LogLevel.Trace)) logger.Trace("-NotifyLocalSubscribers about {0} status {1}", siloAddress.ToLongString(), newStatus);
             
             List<ISiloStatusListener> copy;
             lock (statusListeners)
@@ -281,20 +290,35 @@ namespace Orleans.Runtime.MembershipService
             if (! this.multiClusterActive)
                 throw new OrleansException("internal error: should not call this function without multicluster network");
 
+            List<SiloAddress> result;
+
             // take all the active silos if their count does not exceed the desired number of gateways
             if (localTableCopyOnlyActive.Count <= this.maxMultiClusterGateways)
-                return localTableCopyOnlyActive.Keys.ToList();
+            {
+                result = localTableCopyOnlyActive.Keys.ToList();
+            }
+            else
+            {
+                result = DeterministicBalancedChoice<SiloAddress, UpdateFaultCombo>(
+                    localTableCopyOnlyActive.Keys,
+                    this.maxMultiClusterGateways,
+                   (SiloAddress a) => a.Equals(MyAddress) ? this.myFaultAndUpdateZones : new UpdateFaultCombo(localTable[a]),
+                   logger);
+            }
 
-            return DeterministicBalancedChoice<SiloAddress, UpdateFaultCombo>(
-                localTableCopyOnlyActive.Keys,
-                this.maxMultiClusterGateways,
-               (SiloAddress a) => a.Equals(MyAddress) ? this.myFaultAndUpdateZones : new UpdateFaultCombo(localTable[a]));
+            if (logger.IsEnabled(LogLevel.Debug))
+            {
+                var gateways = string.Join(", ", result.Select(silo => silo.ToString()));
+                logger.Debug($"-DetermineMultiClusterGateways {gateways}");
+            }
+
+            return result;
         }
 
         // pick a specified number of elements from a set of candidates
         // - in a balanced way (try to pick evenly from groups)
         // - in a deterministic way (using sorting order on candidates and keys)
-        internal static List<T> DeterministicBalancedChoice<T, K>(IEnumerable<T> candidates, int count, Func<T, K> group)
+        internal static List<T> DeterministicBalancedChoice<T, K>(IEnumerable<T> candidates, int count, Func<T, K> group, ILogger logger = null)
             where T:IComparable where K:IComparable
         {
             // organize candidates by groups
@@ -321,6 +345,23 @@ namespace Orleans.Runtime.MembershipService
             keys.Sort();
             foreach(var kvp in groups)
                 kvp.Value.Sort();
+
+            // for debugging, trace all the gateway candidates
+            if (logger != null && logger.IsEnabled(LogLevel.Trace))
+            {
+                var b = new StringBuilder();
+                foreach (var k in keys)
+                {
+                    b.Append(k);
+                    b.Append(':');
+                    foreach (var s in groups[k])
+                    {
+                        b.Append(' ');
+                        b.Append(s);
+                    }
+                }
+                logger.Trace($"-DeterministicBalancedChoice candidates {b}");
+            }
               
             // pick round-robin from groups
             var  result = new List<T>();
@@ -357,6 +398,11 @@ namespace Orleans.Runtime.MembershipService
                 int comp = UpdateZone.CompareTo(other.UpdateZone);
                 if (comp != 0) return comp;
                 return FaultZone.CompareTo(other.FaultZone);
+            }
+
+            public override string ToString()
+            {
+                return $"({UpdateZone},{FaultZone})";
             }
         }
 

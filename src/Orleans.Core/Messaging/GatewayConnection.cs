@@ -12,14 +12,11 @@ namespace Orleans.Messaging
     /// 
     /// Note that both sends and receives are synchronous.
     /// </summary>
-    internal class GatewayConnection : OutgoingMessageSender, IQueueDrainable
+    internal class GatewayConnection : OutgoingMessageSender
     {
         private readonly MessageFactory messageFactory;
-
-        private readonly ManualResetEvent initializationEvent = new ManualResetEvent(false);
-
         internal bool IsLive { get; private set; }
-        internal ProxiedMessageCenter MsgCenter { get; private set; }
+        internal ClientMessageCenter MsgCenter { get; private set; }
 
         private Uri addr;
         internal Uri Address
@@ -31,7 +28,6 @@ namespace Orleans.Messaging
                 Silo = addr.ToSiloAddress();
             }
         }
-
         internal SiloAddress Silo { get; private set; }
 
         private readonly GatewayClientReceiver receiver;
@@ -41,7 +37,7 @@ namespace Orleans.Messaging
 
         private DateTime lastConnect;
 
-        internal GatewayConnection(Uri address, ProxiedMessageCenter mc, MessageFactory messageFactory, ExecutorService executorService, ILoggerFactory loggerFactory, TimeSpan openConnectionTimeout)
+        internal GatewayConnection(Uri address, ClientMessageCenter mc, MessageFactory messageFactory, ExecutorService executorService, ILoggerFactory loggerFactory, TimeSpan openConnectionTimeout)
             : base("GatewayClientSender_" + address, mc.SerializationManager, executorService, loggerFactory)
         {
             this.messageFactory = messageFactory;
@@ -55,22 +51,15 @@ namespace Orleans.Messaging
 
         public override void Start()
         {
-            if (Log.IsVerbose) Log.Verbose(ErrorCode.ProxyClient_GatewayConnStarted, "Starting gateway connection for gateway {0}", Address);
+            if (Log.IsEnabled(LogLevel.Debug)) Log.Debug(ErrorCode.ProxyClient_GatewayConnStarted, "Starting gateway connection for gateway {0}", Address);
             lock (Lockable)
             {
                 if (State == ThreadState.Running)
                 {
                     return;
                 }
-
                 Connect();
-                initializationEvent.Set();
-                if (!IsLive)
-                {
-                    // Only partially initialized, callers responsibility 
-                    // is not to use this object.
-                    return;
-                }
+                if (!IsLive) return;
 
                 // If the Connect succeeded
                 receiver.Start();
@@ -81,7 +70,6 @@ namespace Orleans.Messaging
         public override void Stop()
         {
             IsLive = false;
-            initializationEvent.Reset();
             receiver.Stop();
             base.Stop();
             MsgCenter.RuntimeClient.BreakOutstandingMessagesToDeadSilo(Silo);
@@ -96,24 +84,6 @@ namespace Orleans.Messaging
             CloseSocket(s);
         }
 
-        public void WaitInitialization()
-        {
-            initializationEvent.WaitOne();
-        }
-
-        protected override void Process(Message msg)
-        {
-            // After stop GatewayConnection needs to reroute not yet sent messages to another gateway 
-            if (!IsLive)
-            {
-                RerouteMessage(msg);
-            }
-            else
-            {
-                base.Process(msg);
-            }
-        }
-
         // passed the exact same socket on which it got SocketException. This way we prevent races between connect and disconnect.
         public void MarkAsDisconnected(Socket socket2Disconnect)
         {
@@ -126,8 +96,8 @@ namespace Orleans.Messaging
                 {
                     s = Socket;
                     Socket = null;
-                    Log.Warn(ErrorCode.ProxyClient_MarkGatewayDisconnected, String.Format("Marking gateway at address {0} as Disconnected", Address));
-                    if (MsgCenter != null && MsgCenter.GatewayManager != null)
+                    Log.Warn(ErrorCode.ProxyClient_MarkGatewayDisconnected, $"Marking gateway at address {Address} as Disconnected");
+                    if ( MsgCenter != null && MsgCenter.GatewayManager != null)
                         // We need a refresh...
                         MsgCenter.GatewayManager.ExpediteUpdateLiveGatewaysSnapshot();
                 }
@@ -143,7 +113,7 @@ namespace Orleans.Messaging
 
         public void MarkAsDead()
         {
-            Log.Warn(ErrorCode.ProxyClient_MarkGatewayDead, String.Format("Marking gateway at address {0} as Dead in my client local gateway list.", Address));
+            Log.Warn(ErrorCode.ProxyClient_MarkGatewayDead, $"Marking gateway at address {Address} as Dead in my client local gateway list.");
             MsgCenter.GatewayManager.MarkAsDead(Address);
             Stop();
         }
@@ -153,7 +123,7 @@ namespace Orleans.Messaging
         {
             if (!MsgCenter.Running)
             {
-                if (Log.IsVerbose) Log.Verbose(ErrorCode.ProxyClient_MsgCtrNotRunning, "Ignoring connection attempt to gateway {0} because the proxy message center is not running", Address);
+                if (Log.IsEnabled(LogLevel.Debug)) Log.Debug(ErrorCode.ProxyClient_MsgCtrNotRunning, "Ignoring connection attempt to gateway {0} because the proxy message center is not running", Address);
                 return;
             }
 
@@ -165,11 +135,11 @@ namespace Orleans.Messaging
             {
                 if (!IsLive)
                 {
-                    if (Log.IsVerbose) Log.Verbose(ErrorCode.ProxyClient_DeadGateway, "Ignoring connection attempt to gateway {0} because this gateway connection is already marked as non live", Address);
+                    if (Log.IsEnabled(LogLevel.Debug)) Log.Debug(ErrorCode.ProxyClient_DeadGateway, "Ignoring connection attempt to gateway {0} because this gateway connection is already marked as non live", Address);
                     return; // if the connection is already marked as dead, don't try to reconnect. It has been doomed.
                 }
 
-                for (var i = 0; i < ProxiedMessageCenter.CONNECT_RETRY_COUNT; i++)
+                for (var i = 0; i < ClientMessageCenter.CONNECT_RETRY_COUNT; i++)
                 {
                     try
                     {
@@ -188,12 +158,12 @@ namespace Orleans.Messaging
                             if (!MsgCenter.GatewayManager.GetLiveGateways().Contains(Address))
                                 break;
 
-                            // Wait at least ProxiedMessageCenter.MINIMUM_INTERCONNECT_DELAY before reconnection tries
+                            // Wait at least ClientMessageCenter.MINIMUM_INTERCONNECT_DELAY before reconnection tries
                             var millisecondsSinceLastAttempt = DateTime.UtcNow - lastConnect;
-                            if (millisecondsSinceLastAttempt < ProxiedMessageCenter.MINIMUM_INTERCONNECT_DELAY)
+                            if (millisecondsSinceLastAttempt < ClientMessageCenter.MINIMUM_INTERCONNECT_DELAY)
                             {
-                                var wait = ProxiedMessageCenter.MINIMUM_INTERCONNECT_DELAY - millisecondsSinceLastAttempt;
-                                if (Log.IsVerbose) Log.Verbose(ErrorCode.ProxyClient_PauseBeforeRetry, "Pausing for {0} before trying to connect to gateway {1} on trial {2}", wait, Address, i);
+                                var wait = ClientMessageCenter.MINIMUM_INTERCONNECT_DELAY - millisecondsSinceLastAttempt;
+                                if (Log.IsEnabled(LogLevel.Debug)) Log.Debug(ErrorCode.ProxyClient_PauseBeforeRetry, "Pausing for {0} before trying to connect to gateway {1} on trial {2}", wait, Address, i);
                                 Thread.Sleep(wait);
                             }
                         }
@@ -231,7 +201,7 @@ namespace Orleans.Messaging
             if (Cts.IsCancellationRequested)
             {
                 // Recycle the message we've dequeued. Note that this will recycle messages that were queued up to be sent when the gateway connection is declared dead
-                MsgCenter.SendMessage(msg);
+                RerouteMessage(msg);
                 return false;
             }
 
@@ -282,8 +252,8 @@ namespace Orleans.Messaging
         {
             // we only get here if we failed to serialise the msg (or any other catastrophic failure).
             // Request msg fails to serialise on the sending silo, so we just enqueue a rejection msg.
-            Log.Warn(ErrorCode.ProxyClient_SerializationError, String.Format("Unexpected error serializing message to gateway {0}.", Address), exc);
-            FailMessage(msg, String.Format("Unexpected error serializing message to gateway {0}. {1}", Address, exc));
+            Log.Warn(ErrorCode.ProxyClient_SerializationError, $"Unexpected error serializing message to gateway {Address}.", exc);
+            FailMessage(msg, $"Unexpected error serializing message to gateway {Address}. {exc}");
             if (msg.Direction == Message.Directions.Request || msg.Direction == Message.Directions.OneWay)
             {
                 return;
@@ -326,7 +296,7 @@ namespace Orleans.Messaging
             MessagingStatisticsGroup.OnFailedSentMessage(msg);
             if (MsgCenter.Running && msg.Direction == Message.Directions.Request)
             {
-                if (Log.IsVerbose) Log.Verbose(ErrorCode.ProxyClient_RejectingMsg, "Rejecting message: {0}. Reason = {1}", msg, reason);
+                if (Log.IsEnabled(LogLevel.Debug)) Log.Debug(ErrorCode.ProxyClient_RejectingMsg, "Rejecting message: {0}. Reason = {1}", msg, reason);
                 MessagingStatisticsGroup.OnRejectedMessage(msg);
                 Message error = this.messageFactory.CreateRejectionResponse(msg, Message.RejectionTypes.Unrecoverable, reason);
                 MsgCenter.QueueIncomingMessage(error);
@@ -337,6 +307,8 @@ namespace Orleans.Messaging
                 MessagingStatisticsGroup.OnDroppedSentMessage(msg);
             }
         }
+
+        protected override bool DrainAfterCancel => true;
 
         private void RerouteMessage(Message msg)
         {

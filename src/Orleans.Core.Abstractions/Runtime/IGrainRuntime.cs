@@ -15,8 +15,8 @@ namespace Orleans.Runtime
         /// ServiceId's are intended to be long lived Id values for a particular service which will remain constant 
         /// even if the service is started / redeployed multiple times during its operations life.
         /// </summary>
-        /// <returns>ServiceID Guid for this service.</returns>
-        Guid ServiceId { get; }
+        /// <returns>ServiceId Guid for this service.</returns>
+        string ServiceId { get; }
 
         /// <summary>
         /// A unique identifier for the current silo.
@@ -33,9 +33,6 @@ namespace Orleans.Runtime
         IReminderRegistry ReminderRegistry { get; }
 
         IServiceProvider ServiceProvider { get; }
-
-        //TODO: Mark it as [Obsolete] after all runtime has migrated
-        Logger GetLogger(string loggerName);
 
         void DeactivateOnIdle(Grain grain);
 

@@ -1,9 +1,12 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Orleans;
+using Orleans.Configuration;
+using Orleans.Hosting;
 using Orleans.Runtime;
 using Orleans.TestingHost;
 using TestExtensions;
@@ -18,19 +21,35 @@ namespace Tester.HeterogeneousSilosTests
     public class HeterogeneousTests : OrleansTestingBase, IDisposable
     {
         private TestCluster cluster;
+        private static TimeSpan clientRefreshDelay = TimeSpan.FromSeconds(1);
         private readonly TimeSpan refreshInterval = TimeSpan.FromMilliseconds(200);
+
+        private class BuilderConfigurator : IClientBuilderConfigurator
+        {
+            public void Configure(IConfiguration configuration, IClientBuilder clientBuilder)
+            {
+                clientBuilder.Configure<TypeManagementOptions>(options => options.TypeMapRefreshInterval = clientRefreshDelay);
+            }
+        }
 
         private void SetupAndDeployCluster(string defaultPlacementStrategy, params Type[] blackListedTypes)
         {
             cluster?.StopAllSilos();
             var typesName = blackListedTypes.Select(t => t.FullName).ToList();
-            var options = new TestClusterOptions(1);
+            var builder = new TestClusterBuilder(1)
+            {
+                CreateSilo = AppDomainSiloHandle.Create
+            };
 
-            options.ClusterConfiguration.Globals.AssumeHomogenousSilosForTesting = false;
-            options.ClusterConfiguration.Globals.TypeMapRefreshInterval = refreshInterval;
-            options.ClusterConfiguration.Globals.DefaultPlacementStrategy = defaultPlacementStrategy;
-            options.ClusterConfiguration.Overrides[Silo.PrimarySiloName].ExcludedGrainTypes = typesName;
-            cluster = new TestCluster(options);
+            builder.ConfigureLegacyConfiguration(legacy =>
+            {
+                legacy.ClusterConfiguration.Globals.AssumeHomogenousSilosForTesting = false;
+                legacy.ClusterConfiguration.Globals.TypeMapRefreshInterval = refreshInterval;
+                legacy.ClusterConfiguration.Globals.DefaultPlacementStrategy = defaultPlacementStrategy;
+                legacy.ClusterConfiguration.GetOrCreateNodeConfigurationForSilo(Silo.PrimarySiloName).ExcludedGrainTypes = typesName;
+            });
+            builder.AddClientBuilderConfigurator<BuilderConfigurator>();
+            cluster = builder.Build();
             cluster.Deploy();
         }
 
@@ -57,12 +76,22 @@ namespace Tester.HeterogeneousSilosTests
         [Fact]
         public async Task MergeGrainResolverTests()
         {
-            await MergeGrainResolverTestsImpl("RandomPlacement", typeof(TestGrain));
-            await MergeGrainResolverTestsImpl("PreferLocalPlacement", typeof(TestGrain));
-            await MergeGrainResolverTestsImpl("ActivationCountBasedPlacement", typeof(TestGrain));
+            await MergeGrainResolverTestsImpl("RandomPlacement", true, typeof(TestGrain));
+            await MergeGrainResolverTestsImpl("PreferLocalPlacement", true, typeof(TestGrain));
+            // TODO Check ActivationCountBasedPlacement in tests
+            //await MergeGrainResolverTestsImpl("ActivationCountBasedPlacement", typeof(TestGrain));
         }
 
-        private async Task MergeGrainResolverTestsImpl(string defaultPlacementStrategy, params Type[] blackListedTypes)
+        [Fact]
+        public async Task MergeGrainResolverWithClientRefreshTests()
+        {
+            await MergeGrainResolverTestsImpl("RandomPlacement", false, typeof(TestGrain));
+            await MergeGrainResolverTestsImpl("PreferLocalPlacement", false, typeof(TestGrain));
+            // TODO Check ActivationCountBasedPlacement in tests
+            //await MergeGrainResolverTestsImpl("ActivationCountBasedPlacement", typeof(TestGrain));
+        }
+
+        private async Task MergeGrainResolverTestsImpl(string defaultPlacementStrategy, bool restartClient, params Type[] blackListedTypes)
         {
             SetupAndDeployCluster(defaultPlacementStrategy, blackListedTypes);
 
@@ -76,10 +105,17 @@ namespace Tester.HeterogeneousSilosTests
             cluster.StartAdditionalSilo();
             await Task.Delay(delayTimeout);
 
-            // Disconnect/Reconnect the client
-            await cluster.Client.Close();
-            cluster.Client.Dispose();
-            cluster.InitializeClient();
+            if (restartClient)
+            {
+                // Disconnect/Reconnect the client
+                await cluster.Client.Close();
+                cluster.Client.Dispose();
+                cluster.InitializeClient();
+            }
+            else
+            {
+                await Task.Delay(clientRefreshDelay.Multiply(3));
+            }
 
             for (var i = 0; i < 5; i++)
             {
@@ -92,14 +128,17 @@ namespace Tester.HeterogeneousSilosTests
             cluster.StopSecondarySilos();
             await Task.Delay(delayTimeout);
 
-            var grain = this.cluster.GrainFactory.GetGrain<ITestGrain>(0);
-            var orleansException = await Assert.ThrowsAsync<OrleansException>(() => grain.SetLabel("Hello world"));
-            Assert.Contains("Cannot find an implementation class for grain interface", orleansException.Message);
-
-            // Disconnect/Reconnect the client
-            await cluster.Client.Close();
-            cluster.Client.Dispose();
-            cluster.InitializeClient();
+            if (restartClient)
+            {
+                // Disconnect/Reconnect the client
+                await cluster.Client.Close();
+                cluster.Client.Dispose();
+                cluster.InitializeClient();
+            }
+            else
+            {
+                await Task.Delay(clientRefreshDelay.Multiply(3));
+            }
 
             // Should fail
             exception = Assert.Throws<ArgumentException>(() => this.cluster.GrainFactory.GetGrain<ITestGrain>(0));
